@@ -1,3 +1,4 @@
+from src.generator import generate_content
 import streamlit as st
 
 st.set_page_config(
@@ -23,6 +24,21 @@ campaign_brief = st.text_area(
 
 if st.button("Generate Content"):
     if brand_info and campaign_brief:
-        st.success("输入成功！下一步我们将在这里接入 LLM。")
+
+        with st.spinner("Generating content..."):
+            try:
+                result = generate_content(
+                    brand_info=brand_info,
+                    campaign_brief=campaign_brief
+                )
+
+                st.subheader("Generated Content")
+                st.write(result)
+
+            except Exception as e:
+                st.error(f"Generation failed: {e}")
+
     else:
-        st.warning("请先填写 Brand Information 和 Campaign Brief。")
+        st.warning(
+            "Please provide both Brand Information and Campaign Brief."
+        )
