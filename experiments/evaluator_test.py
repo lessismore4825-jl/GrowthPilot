@@ -48,12 +48,15 @@ LumiSkin屏障修护面霜采用全球领先医学配方，
 """
 
 
+print("1. 开始调用 Gemini Evaluator...")
+
 evaluation = evaluate_content(
     brand_info=brand_info,
     campaign_brief=campaign_brief,
     generated_content=bad_content
 )
 
+print("2. Gemini 返回成功")
 
 print(
     json.dumps(

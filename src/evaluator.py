@@ -1,8 +1,8 @@
 import json
-
-from google import genai
 import os
+
 from dotenv import load_dotenv
+from google import genai
 
 
 load_dotenv()
@@ -61,6 +61,9 @@ For unsupported_claim_risk:
 1 = very low risk
 10 = very high risk
 
+Be strict and evidence-based.
+Do not give high scores simply because the content is fluent or well-written.
+
 Return ONLY valid JSON using exactly this structure:
 
 {{
@@ -69,7 +72,6 @@ Return ONLY valid JSON using exactly this structure:
     "selling_point_coverage": 0,
     "factual_consistency": 0,
     "unsupported_claim_risk": 0,
-    "overall_score": 0,
     "issues": [
         "issue 1",
         "issue 2"
@@ -91,4 +93,23 @@ Return ONLY valid JSON using exactly this structure:
     response_text = response_text.replace("```json", "")
     response_text = response_text.replace("```", "").strip()
 
-    return json.loads(response_text)
+    evaluation = json.loads(response_text)
+
+    # Convert claim risk into a positive safety score.
+    # Risk 1/10 -> Safety 10/10
+    # Risk 10/10 -> Safety 1/10
+    claim_safety = 11 - evaluation["unsupported_claim_risk"]
+
+    # Overall score is calculated by product logic,
+    # rather than allowing the LLM to decide the final score.
+    overall_score = (
+        evaluation["brand_alignment"] * 0.20
+        + evaluation["tone_match"] * 0.15
+        + evaluation["selling_point_coverage"] * 0.20
+        + evaluation["factual_consistency"] * 0.30
+        + claim_safety * 0.15
+    )
+
+    evaluation["overall_score"] = round(overall_score, 1)
+
+    return evaluation
