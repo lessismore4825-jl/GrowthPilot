@@ -1,4 +1,4 @@
 streamlit
 pandas
 python-dotenv
-google-genai
+openai

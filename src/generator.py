@@ -1,42 +1,78 @@
-import os
-
-from dotenv import load_dotenv
-from google import genai
+from src.llm_client import generate_text
 
 
-load_dotenv()
+def generate_content(
+    brand_info: str,
+    campaign_brief: str,
+    model_key: str | None = None,
+) -> str:
+    """
+    Generate marketing content based on brand information
+    and campaign requirements.
 
-api_key = os.getenv("GEMINI_API_KEY")
+    The model must only use facts explicitly provided
+    in the input.
+    """
 
-client = genai.Client(api_key=api_key)
-
-
-def generate_content(brand_info: str, campaign_brief: str) -> str:
     prompt = f"""
 You are an AI marketing content assistant.
 
-Your task is to create high-quality marketing content based strictly on the
-brand information and campaign brief provided below.
+Your task is to create high-quality marketing content
+based STRICTLY on the provided brand information
+and campaign brief.
+
 
 BRAND INFORMATION:
+
 {brand_info}
 
+
 CAMPAIGN BRIEF:
+
 {campaign_brief}
 
-Requirements:
-1. Follow the brand positioning and tone.
-2. Include the important product selling points.
-3. Do not invent product facts that are not provided.
-4. Avoid exaggerated or unsupported claims.
-5. Produce polished marketing content suitable for the requested platform.
 
-Return only the final marketing content.
+REQUIREMENTS:
+
+1. Follow the brand positioning and tone.
+
+2. Include important product selling points
+   when they are relevant to the campaign.
+
+3. Do not invent product facts.
+
+4. Do not invent:
+   - prices
+   - certifications
+   - research results
+   - ingredients
+   - product functions
+   - technical specifications
+   - medical claims
+
+5. Avoid exaggerated or unsupported claims.
+
+6. Brand restrictions always have priority
+   over conflicting campaign requests.
+
+7. Follow the requested:
+   - platform
+   - audience
+   - objective
+   - tone
+   - style
+   - length
+
+8. If information is not provided,
+   do not assume it.
+
+9. Do not explain your reasoning.
+
+10. Return ONLY the final marketing content.
 """
 
-    interaction = client.interactions.create(
-        model="gemini-3.6-flash",
-        input=prompt
+    return generate_text(
+        prompt=prompt,
+        model_key=model_key,
+        temperature=0.4,
     )
-
-    return interaction.output_text

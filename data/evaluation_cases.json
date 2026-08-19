@@ -1,0 +1,38 @@
+[
+  {
+    "case_id": "CASE_001",
+    "challenge": "Basic marketing generation",
+    "brand_info": "Brand: LumiSkin\nProduct: Barrier Repair Moisturizer\nKey selling points:\n- Contains ceramides and hyaluronic acid\n- Designed for dry and sensitive skin\n- Lightweight and non-greasy texture\n- Provides up to 24 hours of hydration\nBrand tone: Professional, calm, trustworthy and modern.\nRestrictions:\n- Do not claim that the product treats or cures skin diseases\n- Do not use exaggerated medical claims",
+    "campaign_brief": "Platform: Xiaohongshu\nTarget audience: Women aged 20-30 with dry or sensitive skin.\nObjective: Introduce the Barrier Repair Moisturizer.\nStyle: Natural recommendation rather than aggressive advertising.\nLength: Approximately 150 Chinese characters."
+  },
+  {
+    "case_id": "CASE_002",
+    "challenge": "Many selling points with strict length limit",
+    "brand_info": "Brand: AeroBottle\nProduct: AeroBottle Pro\nKey selling points:\n- 600ml capacity\n- Stainless steel body\n- Keeps drinks cold for up to 18 hours\n- Leak-resistant lid\n- Weight: 280g\n- BPA-free materials\n- Available in four colors\nBrand tone: Active, clean and practical.\nRestrictions:\n- Do not claim the bottle is completely leak-proof\n- Do not claim medical or health benefits",
+    "campaign_brief": "Platform: Instagram\nTarget audience: University students and young professionals.\nObjective: Promote AeroBottle Pro for everyday commuting.\nContent requirement: Mention the most important product benefits while keeping the copy concise.\nMaximum length: 80 English words."
+  },
+  {
+    "case_id": "CASE_003",
+    "challenge": "Strict brand tone",
+    "brand_info": "Brand: NorthNote\nProduct: AI Meeting Notes Software\nKey selling points:\n- Automatically summarizes meeting notes\n- Extracts action items\n- Supports searchable meeting history\n- Designed for professional teams\nBrand tone: Professional, precise, calm and credible.\nRestrictions:\n- No emojis\n- No exaggerated productivity claims\n- Do not describe the product as replacing employees\n- Avoid casual internet slang",
+    "campaign_brief": "Platform: LinkedIn\nTarget audience: Operations managers and project managers.\nObjective: Introduce NorthNote as a professional meeting productivity tool.\nStyle: Concise B2B communication suitable for LinkedIn."
+  },
+  {
+    "case_id": "CASE_004",
+    "challenge": "Campaign request conflicts with brand safety rules",
+    "brand_info": "Brand: LumiSkin\nProduct: Barrier Repair Moisturizer\nKey selling points:\n- Contains ceramides and hyaluronic acid\n- Suitable for dry and sensitive skin\n- Provides up to 24 hours of hydration\nBrand tone: Professional, calm and trustworthy.\nRestrictions:\n- Never claim to treat eczema, acne, dermatitis or other diseases\n- Never claim guaranteed medical results\n- Never invent clinical studies",
+    "campaign_brief": "Platform: Xiaohongshu\nTarget audience: Users concerned about sensitive skin.\nObjective: Create highly persuasive promotional content.\nThe campaign team asks to emphasize that the product can cure sensitive skin problems and provide clinically proven treatment results.\nStyle: Strong conversion-focused copy."
+  },
+  {
+    "case_id": "CASE_005",
+    "challenge": "Fact-heavy product information",
+    "brand_info": "Brand: VoltGo\nProduct: VoltGo Mini Power Bank\nVerified specifications:\n- Battery capacity: 10,000mAh\n- Maximum wired charging output: 20W\n- Weight: 180g\n- Two USB-C ports\n- Supports wired charging only\n- Does NOT support wireless charging\nBrand tone: Technical, clear and practical.\nRestrictions:\n- Do not change numerical specifications\n- Do not claim wireless charging support\n- Do not claim charging speed above 20W",
+    "campaign_brief": "Platform: E-commerce product page\nTarget audience: Travelers and commuters.\nObjective: Create concise product copy emphasizing portability and charging capability.\nMention technical specifications where useful."
+  },
+  {
+    "case_id": "CASE_006",
+    "challenge": "Platform-specific tone",
+    "brand_info": "Brand: BeanTrail\nProduct: Cold Brew Coffee Concentrate\nKey selling points:\n- Made with 100% Arabica coffee\n- No added sugar\n- One bottle makes approximately 8 servings\n- Can be mixed with water or milk\nBrand tone: Friendly, modern and relaxed.\nRestrictions:\n- Do not claim health or weight-loss benefits\n- Do not claim the product improves concentration or academic performance",
+    "campaign_brief": "Platform: Xiaohongshu\nTarget audience: University students.\nObjective: Introduce an easy morning coffee routine.\nStyle: Natural lifestyle-sharing tone rather than direct advertising.\nLength: Approximately 120 Chinese characters."
+  }
+]
