@@ -5,7 +5,10 @@ import streamlit as st
 
 from src.generator import generate_content
 from src.evaluator import evaluate_content
-from src.reviser import revise_content
+from src.reviser import (
+    fix_compliance_issues,
+    optimize_quality,
+)
 from src.llm_client import JUDGE_MODEL_KEY
 
 
@@ -21,7 +24,7 @@ st.set_page_config(
 
 
 # =========================================================
-# Product Configuration
+# Model Configuration
 # =========================================================
 
 MODEL_OPTIONS = {
@@ -33,9 +36,6 @@ MODEL_DISPLAY_NAMES = {
     "step": "Step-3.5-Flash",
     "qwen": "Qwen3.5-35B-A3B",
 }
-
-QUALITY_THRESHOLD = 9.0
-CLAIM_RISK_THRESHOLD = 2
 
 
 # =========================================================
@@ -52,56 +52,68 @@ DEFAULT_SESSION_STATE = {
     "v2_evaluation": None,
     "v2_revision_latency": None,
     "v2_evaluation_latency": None,
+    "v2_mode": None,
 
     "saved_brand_info": None,
     "saved_campaign_brief": None,
-
+    "saved_policy_context": None,
     "saved_model_key": None,
     "saved_model_name": None,
 }
 
 
 for key, value in DEFAULT_SESSION_STATE.items():
+
     if key not in st.session_state:
-        st.session_state[key] = value
+
+        st.session_state[
+            key
+        ] = value
 
 
 # =========================================================
-# Helper Functions
+# Helpers
 # =========================================================
 
 def reset_results():
-    """
-    Clear previous generation and evaluation results
-    before starting a new experiment.
-    """
 
-    st.session_state.v1_content = None
-    st.session_state.v1_evaluation = None
-    st.session_state.v1_generation_latency = None
-    st.session_state.v1_evaluation_latency = None
+    for key in [
+        "v1_content",
+        "v1_evaluation",
+        "v1_generation_latency",
+        "v1_evaluation_latency",
+        "v2_content",
+        "v2_evaluation",
+        "v2_revision_latency",
+        "v2_evaluation_latency",
+        "v2_mode",
+    ]:
 
-    st.session_state.v2_content = None
-    st.session_state.v2_evaluation = None
-    st.session_state.v2_revision_latency = None
-    st.session_state.v2_evaluation_latency = None
+        st.session_state[
+            key
+        ] = None
 
 
 def show_evaluation(
     evaluation: dict,
     title: str,
 ):
-    """
-    Display evaluation scores, issues, and suggestions.
-    """
 
-    st.subheader(title)
+    st.subheader(
+        title
+    )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(
+        3
+    )
 
     col1.metric(
-        "Overall Score",
-        f"{evaluation['overall_score']:.1f}/10",
+        "Heuristic Composite Score",
+        f"{evaluation['heuristic_composite_score']:.1f}/10",
+        help=(
+            "Diagnostic comparison signal only. "
+            "This is not a calibrated pass/fail threshold."
+        ),
     )
 
     col2.metric(
@@ -115,6 +127,7 @@ def show_evaluation(
         help="Lower is better.",
     )
 
+
     score_df = pd.DataFrame(
         {
             "Dimension": [
@@ -124,15 +137,31 @@ def show_evaluation(
                 "Factual Consistency",
                 "Unsupported Claim Risk",
             ],
+
             "Score": [
-                evaluation["brand_alignment"],
-                evaluation["tone_match"],
-                evaluation["selling_point_coverage"],
-                evaluation["factual_consistency"],
-                evaluation["unsupported_claim_risk"],
+                evaluation[
+                    "brand_alignment"
+                ],
+
+                evaluation[
+                    "tone_match"
+                ],
+
+                evaluation[
+                    "selling_point_coverage"
+                ],
+
+                evaluation[
+                    "factual_consistency"
+                ],
+
+                evaluation[
+                    "unsupported_claim_risk"
+                ],
             ],
         }
     )
+
 
     st.dataframe(
         score_df,
@@ -140,167 +169,215 @@ def show_evaluation(
         hide_index=True,
     )
 
-    issues = evaluation.get(
-        "issues",
+
+    # =====================================================
+    # Compliance Findings
+    # =====================================================
+
+    compliance_findings = evaluation.get(
+        "compliance_findings",
         [],
     )
 
-    suggestions = evaluation.get(
-        "suggestions",
-        [],
+
+    st.markdown(
+        "### Compliance Review"
     )
 
-    if issues:
-        st.markdown("**Issues Identified**")
 
-        for issue in issues:
-            st.write(f"• {issue}")
+    if compliance_findings:
+
+        st.error(
+            f"{len(compliance_findings)} blocking "
+            "compliance issue(s) detected."
+        )
+
+
+        for index, finding in enumerate(
+            compliance_findings,
+            start=1,
+        ):
+
+            with st.expander(
+                f"Blocking Issue {index}",
+                expanded=True,
+            ):
+
+                st.markdown(
+                    "**Problematic Content**"
+                )
+
+                st.write(
+                    finding[
+                        "evidence"
+                    ]
+                )
+
+
+                st.markdown(
+                    "**Policy Source**"
+                )
+
+                st.write(
+                    finding[
+                        "policy_source"
+                    ]
+                )
+
+
+                st.markdown(
+                    "**Policy Basis**"
+                )
+
+                st.write(
+                    finding[
+                        "policy_basis"
+                    ]
+                )
+
+
+                st.markdown(
+                    "**Why It Conflicts**"
+                )
+
+                st.write(
+                    finding[
+                        "reason"
+                    ]
+                )
+
+
+                st.markdown(
+                    "**Required Action**"
+                )
+
+                st.write(
+                    finding[
+                        "required_action"
+                    ]
+                )
+
 
     else:
+
         st.success(
-            "No major issues were identified."
+            "No blocking compliance issue was "
+            "detected by the current evaluation system."
         )
 
-    if suggestions:
-        st.markdown("**Improvement Suggestions**")
+        st.caption(
+            "This does not constitute legal approval "
+            "or a guarantee that the content is ready "
+            "for publication."
+        )
 
-        for suggestion in suggestions:
-            st.write(f"• {suggestion}")
+
+    # =====================================================
+    # Advisory Findings
+    # =====================================================
+
+    advisory_findings = evaluation.get(
+        "advisory_findings",
+        [],
+    )
 
 
-def needs_revision(
-    evaluation: dict,
-) -> bool:
-    """
-    Product-defined quality gate.
+    st.markdown(
+        "### Quality Advisory"
+    )
 
-    Revision is triggered when:
-    - overall score is below threshold, OR
-    - unsupported claim risk is too high, OR
-    - evaluator identifies concrete issues.
-    """
 
-    return (
-        evaluation["overall_score"]
-        < QUALITY_THRESHOLD
+    if advisory_findings:
 
-        or evaluation[
-            "unsupported_claim_risk"
-        ] > CLAIM_RISK_THRESHOLD
+        st.info(
+            f"{len(advisory_findings)} non-blocking "
+            "improvement suggestion(s) found."
+        )
 
-        or len(
-            evaluation.get(
-                "issues",
-                [],
+
+        for finding in advisory_findings:
+
+            area = finding.get(
+                "area",
+                "General",
             )
-        ) > 0
-    )
+
+            reason = finding.get(
+                "reason",
+                "",
+            )
+
+            suggestion = finding.get(
+                "suggestion",
+                "",
+            )
+
+            st.markdown(
+                f"**{area}**"
+            )
+
+            st.write(
+                reason
+            )
+
+            if suggestion:
+
+                st.caption(
+                    f"Suggestion: {suggestion}"
+                )
 
 
-def build_comparison_dataframe(
-    v1: dict,
-    v2: dict,
-) -> pd.DataFrame:
-    """
-    Build V1 vs V2 evaluation comparison.
+    else:
 
-    For normal quality metrics:
-    positive improvement means V2 > V1.
-
-    For Unsupported Claim Risk:
-    positive improvement means risk decreased.
-    """
-
-    rows = []
-
-    normal_metrics = [
-        (
-            "Overall Score",
-            "overall_score",
-        ),
-        (
-            "Brand Alignment",
-            "brand_alignment",
-        ),
-        (
-            "Tone Match",
-            "tone_match",
-        ),
-        (
-            "Selling Point Coverage",
-            "selling_point_coverage",
-        ),
-        (
-            "Factual Consistency",
-            "factual_consistency",
-        ),
-    ]
-
-    for display_name, key in normal_metrics:
-
-        v1_value = v1[key]
-        v2_value = v2[key]
-
-        rows.append(
-            {
-                "Metric": display_name,
-                "V1": v1_value,
-                "V2": v2_value,
-                "Improvement": round(
-                    v2_value - v1_value,
-                    1,
-                ),
-            }
+        st.write(
+            "No major advisory issue detected."
         )
 
-    v1_risk = v1[
-        "unsupported_claim_risk"
-    ]
 
-    v2_risk = v2[
-        "unsupported_claim_risk"
-    ]
+    # =====================================================
+    # Human Review Notes
+    # =====================================================
 
-    rows.append(
-        {
-            "Metric":
-                "Unsupported Claim Risk",
-
-            "V1":
-                v1_risk,
-
-            "V2":
-                v2_risk,
-
-            "Improvement":
-                round(
-                    v1_risk - v2_risk,
-                    1,
-                ),
-        }
+    review_notes = evaluation.get(
+        "review_notes",
+        [],
     )
 
-    return pd.DataFrame(rows)
+
+    if review_notes:
+
+        st.markdown(
+            "### Human Review Notes"
+        )
+
+        for note in review_notes:
+
+            st.write(
+                f"• {note}"
+            )
 
 
 # =========================================================
 # Header
 # =========================================================
 
-st.title("🚀 GrowthPilot")
+st.title(
+    "🚀 GrowthPilot"
+)
 
 st.caption(
-    "AI Marketing Content Generation, "
-    "Evaluation and Revision System"
+    "Policy-Grounded AI Marketing "
+    "Content Governance"
 )
 
 st.markdown(
     """
-GrowthPilot generates marketing content,
-evaluates quality and factual safety,
-then automatically supports revision
-when the content does not meet the
-product quality threshold.
+GrowthPilot separates **blocking compliance issues**
+from **non-blocking quality suggestions**.
+
+Rules determine what must be fixed.
+AI suggests what could be improved.
+Humans retain the final publishing decision.
 """
 )
 
@@ -309,7 +386,10 @@ product quality threshold.
 # Model Selection
 # =========================================================
 
-st.header("1. Model Configuration")
+st.header(
+    "1. Model Configuration"
+)
+
 
 selected_model_name = st.selectbox(
     "Candidate Model",
@@ -318,21 +398,26 @@ selected_model_name = st.selectbox(
     ),
 )
 
-selected_model_key = MODEL_OPTIONS[
-    selected_model_name
-]
+
+selected_model_key = (
+    MODEL_OPTIONS[
+        selected_model_name
+    ]
+)
 
 
-judge_display_name = MODEL_DISPLAY_NAMES.get(
-    JUDGE_MODEL_KEY,
-    JUDGE_MODEL_KEY,
+judge_display_name = (
+    MODEL_DISPLAY_NAMES.get(
+        JUDGE_MODEL_KEY,
+        JUDGE_MODEL_KEY,
+    )
 )
 
 
 st.info(
     f"Generator / Reviser: "
     f"{selected_model_name}  |  "
-    f"Fixed Judge: "
+    f"Primary Demo Judge: "
     f"{judge_display_name}"
 )
 
@@ -341,7 +426,9 @@ st.info(
 # Inputs
 # =========================================================
 
-st.header("2. Campaign Input")
+st.header(
+    "2. Campaign Input"
+)
 
 
 default_brand_info = """
@@ -400,11 +487,32 @@ campaign_brief = st.text_area(
 )
 
 
+policy_context = st.text_area(
+    "Additional Policy Context (Optional)",
+    value="",
+    height=180,
+    placeholder=(
+        "Paste applicable advertising rules, "
+        "platform policies, or internal brand "
+        "policies here. Only supplied policy "
+        "can be used as hard external compliance basis."
+    ),
+)
+
+
+st.caption(
+    "Later this field can be automatically "
+    "populated through a RAG policy knowledge base."
+)
+
+
 # =========================================================
 # Generate V1
 # =========================================================
 
-st.header("3. Generate & Evaluate V1")
+st.header(
+    "3. Generate & Review"
+)
 
 
 if st.button(
@@ -414,18 +522,23 @@ if st.button(
 ):
 
     if not brand_info.strip():
+
         st.error(
             "Please provide Brand Information."
         )
 
+
     elif not campaign_brief.strip():
+
         st.error(
             "Please provide a Campaign Brief."
         )
 
+
     else:
 
         reset_results()
+
 
         st.session_state.saved_brand_info = (
             brand_info
@@ -433,6 +546,10 @@ if st.button(
 
         st.session_state.saved_campaign_brief = (
             campaign_brief
+        )
+
+        st.session_state.saved_policy_context = (
+            policy_context
         )
 
         st.session_state.saved_model_key = (
@@ -444,22 +561,16 @@ if st.button(
         )
 
 
-        # -------------------------------------------------
-        # Generate V1
-        # -------------------------------------------------
-
         try:
 
             with st.spinner(
-                f"Generating V1 with "
+                f"Generating with "
                 f"{selected_model_name}..."
             ):
 
-                start_time = (
-                    time.perf_counter()
-                )
+                start = time.perf_counter()
 
-                v1_content = generate_content(
+                content = generate_content(
                     brand_info=brand_info,
                     campaign_brief=campaign_brief,
                     model_key=selected_model_key,
@@ -467,12 +578,12 @@ if st.button(
 
                 generation_latency = (
                     time.perf_counter()
-                    - start_time
+                    - start
                 )
 
 
             st.session_state.v1_content = (
-                v1_content
+                content
             )
 
             st.session_state.v1_generation_latency = (
@@ -483,33 +594,28 @@ if st.button(
             )
 
 
-            # -------------------------------------------------
-            # Evaluate V1
-            # -------------------------------------------------
-
             with st.spinner(
-                f"Evaluating V1 with fixed judge "
+                f"Reviewing with "
                 f"{judge_display_name}..."
             ):
 
-                start_time = (
-                    time.perf_counter()
-                )
+                start = time.perf_counter()
 
-                v1_evaluation = evaluate_content(
+                evaluation = evaluate_content(
                     brand_info=brand_info,
                     campaign_brief=campaign_brief,
-                    generated_content=v1_content,
+                    generated_content=content,
+                    policy_context=policy_context,
                 )
 
                 evaluation_latency = (
                     time.perf_counter()
-                    - start_time
+                    - start
                 )
 
 
             st.session_state.v1_evaluation = (
-                v1_evaluation
+                evaluation
             )
 
             st.session_state.v1_evaluation_latency = (
@@ -520,10 +626,10 @@ if st.button(
             )
 
 
-        except Exception as e:
+        except Exception as error:
 
             st.error(
-                f"Generation or evaluation failed: {e}"
+                f"Generation or review failed: {error}"
             )
 
 
@@ -533,25 +639,28 @@ if st.button(
 
 if st.session_state.v1_content:
 
-    st.subheader("V1 Generated Content")
+    st.subheader(
+        "V1 Content"
+    )
 
     st.write(
         st.session_state.v1_content
     )
 
 
-    latency_col1, latency_col2 = (
-        st.columns(2)
+    col1, col2 = st.columns(
+        2
     )
 
 
-    latency_col1.metric(
+    col1.metric(
         "Generation Latency",
         f"{st.session_state.v1_generation_latency:.2f}s",
     )
 
-    latency_col2.metric(
-        "Evaluation Latency",
+
+    col2.metric(
+        "Review Latency",
         f"{st.session_state.v1_evaluation_latency:.2f}s",
     )
 
@@ -560,54 +669,200 @@ if st.session_state.v1_evaluation:
 
     show_evaluation(
         st.session_state.v1_evaluation,
-        "V1 Evaluation",
+        "V1 Review",
     )
 
 
 # =========================================================
-# Quality Gate
+# Actions
 # =========================================================
 
 if st.session_state.v1_evaluation:
 
-    revision_required = needs_revision(
+    evaluation = (
         st.session_state.v1_evaluation
     )
 
 
-    st.header("4. Quality Gate")
+    compliance_findings = evaluation.get(
+        "compliance_findings",
+        [],
+    )
 
 
-    if revision_required:
+    advisory_findings = evaluation.get(
+        "advisory_findings",
+        [],
+    )
+
+
+    st.header(
+        "4. Actions"
+    )
+
+
+    # =====================================================
+    # Compliance Fix
+    # =====================================================
+
+    if compliance_findings:
 
         st.warning(
-            "V1 does not fully meet the "
-            "GrowthPilot quality threshold. "
-            "AI revision is recommended."
+            "Blocking compliance findings require "
+            "attention before publishing."
         )
 
 
         if st.button(
-            "Revise with AI",
+            "Fix Compliance Issues",
+            type="primary",
             use_container_width=True,
         ):
 
             try:
 
-                # -----------------------------------------
-                # Revise V1 → V2
-                # -----------------------------------------
-
                 with st.spinner(
-                    f"Revising with "
-                    f"{st.session_state.saved_model_name}..."
+                    "Fixing compliance issues..."
                 ):
 
-                    start_time = (
-                        time.perf_counter()
+                    start = time.perf_counter()
+
+                    v2_content = (
+                        fix_compliance_issues(
+                            brand_info=(
+                                st.session_state
+                                .saved_brand_info
+                            ),
+
+                            campaign_brief=(
+                                st.session_state
+                                .saved_campaign_brief
+                            ),
+
+                            original_content=(
+                                st.session_state
+                                .v1_content
+                            ),
+
+                            evaluation=(
+                                st.session_state
+                                .v1_evaluation
+                            ),
+
+                            policy_context=(
+                                st.session_state
+                                .saved_policy_context
+                            ),
+
+                            model_key=(
+                                st.session_state
+                                .saved_model_key
+                            ),
+                        )
                     )
 
-                    v2_content = revise_content(
+                    revision_latency = (
+                        time.perf_counter()
+                        - start
+                    )
+
+
+                st.session_state.v2_content = (
+                    v2_content
+                )
+
+                st.session_state.v2_revision_latency = (
+                    round(
+                        revision_latency,
+                        2,
+                    )
+                )
+
+                st.session_state.v2_mode = (
+                    "Compliance Fix"
+                )
+
+
+                with st.spinner(
+                    "Re-checking revised content..."
+                ):
+
+                    start = time.perf_counter()
+
+                    v2_evaluation = (
+                        evaluate_content(
+                            brand_info=(
+                                st.session_state
+                                .saved_brand_info
+                            ),
+
+                            campaign_brief=(
+                                st.session_state
+                                .saved_campaign_brief
+                            ),
+
+                            generated_content=(
+                                v2_content
+                            ),
+
+                            policy_context=(
+                                st.session_state
+                                .saved_policy_context
+                            ),
+                        )
+                    )
+
+                    evaluation_latency = (
+                        time.perf_counter()
+                        - start
+                    )
+
+
+                st.session_state.v2_evaluation = (
+                    v2_evaluation
+                )
+
+                st.session_state.v2_evaluation_latency = (
+                    round(
+                        evaluation_latency,
+                        2,
+                    )
+                )
+
+
+            except Exception as error:
+
+                st.error(
+                    f"Compliance fix failed: {error}"
+                )
+
+
+    # =====================================================
+    # Optional Quality Optimization
+    # =====================================================
+
+    elif advisory_findings:
+
+        st.info(
+            "No blocking compliance issue detected. "
+            "Quality optimization is optional."
+        )
+
+
+        if st.button(
+            "Optimize Quality (Optional)",
+            use_container_width=True,
+        ):
+
+            try:
+
+                with st.spinner(
+                    "Optimizing quality..."
+                ):
+
+                    start = time.perf_counter()
+
+                    v2_content = optimize_quality(
                         brand_info=(
                             st.session_state
                             .saved_brand_info
@@ -628,6 +883,11 @@ if st.session_state.v1_evaluation:
                             .v1_evaluation
                         ),
 
+                        policy_context=(
+                            st.session_state
+                            .saved_policy_context
+                        ),
+
                         model_key=(
                             st.session_state
                             .saved_model_key
@@ -636,7 +896,7 @@ if st.session_state.v1_evaluation:
 
                     revision_latency = (
                         time.perf_counter()
-                        - start_time
+                        - start
                     )
 
 
@@ -651,19 +911,16 @@ if st.session_state.v1_evaluation:
                     )
                 )
 
+                st.session_state.v2_mode = (
+                    "Optional Quality Optimization"
+                )
 
-                # -----------------------------------------
-                # Evaluate V2
-                # -----------------------------------------
 
                 with st.spinner(
-                    f"Evaluating V2 with fixed judge "
-                    f"{judge_display_name}..."
+                    "Reviewing optimized content..."
                 ):
 
-                    start_time = (
-                        time.perf_counter()
-                    )
+                    start = time.perf_counter()
 
                     v2_evaluation = evaluate_content(
                         brand_info=(
@@ -679,11 +936,16 @@ if st.session_state.v1_evaluation:
                         generated_content=(
                             v2_content
                         ),
+
+                        policy_context=(
+                            st.session_state
+                            .saved_policy_context
+                        ),
                     )
 
-                    v2_evaluation_latency = (
+                    evaluation_latency = (
                         time.perf_counter()
-                        - start_time
+                        - start
                     )
 
 
@@ -693,24 +955,24 @@ if st.session_state.v1_evaluation:
 
                 st.session_state.v2_evaluation_latency = (
                     round(
-                        v2_evaluation_latency,
+                        evaluation_latency,
                         2,
                     )
                 )
 
 
-            except Exception as e:
+            except Exception as error:
 
                 st.error(
-                    f"Revision or evaluation failed: {e}"
+                    f"Quality optimization failed: {error}"
                 )
 
 
     else:
 
         st.success(
-            "V1 meets the GrowthPilot quality threshold. "
-            "Revision is not required."
+            "No blocking issue or major quality "
+            "suggestion was identified."
         )
 
 
@@ -720,27 +982,35 @@ if st.session_state.v1_evaluation:
 
 if st.session_state.v2_content:
 
-    st.header("5. Revised Content")
+    st.header(
+        "5. Revised Content"
+    )
 
-    st.subheader("V2 Generated Content")
+
+    st.caption(
+        f"Revision Mode: "
+        f"{st.session_state.v2_mode}"
+    )
+
 
     st.write(
         st.session_state.v2_content
     )
 
 
-    latency_col1, latency_col2 = (
-        st.columns(2)
+    col1, col2 = st.columns(
+        2
     )
 
 
-    latency_col1.metric(
+    col1.metric(
         "Revision Latency",
         f"{st.session_state.v2_revision_latency:.2f}s",
     )
 
-    latency_col2.metric(
-        "V2 Evaluation Latency",
+
+    col2.metric(
+        "Re-check Latency",
         f"{st.session_state.v2_evaluation_latency:.2f}s",
     )
 
@@ -749,144 +1019,103 @@ if st.session_state.v2_evaluation:
 
     show_evaluation(
         st.session_state.v2_evaluation,
-        "V2 Evaluation",
+        "V2 Review",
     )
 
 
-# =========================================================
-# V1 vs V2 Comparison
-# =========================================================
-
-if (
-    st.session_state.v1_evaluation
-    and st.session_state.v2_evaluation
-):
-
-    st.header("6. V1 vs V2 Comparison")
-
-
-    comparison_df = (
-        build_comparison_dataframe(
-            st.session_state.v1_evaluation,
-            st.session_state.v2_evaluation,
-        )
-    )
-
-
-    st.dataframe(
-        comparison_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-    v1_score = (
+    v1_count = len(
         st.session_state
         .v1_evaluation[
-            "overall_score"
+            "compliance_findings"
         ]
     )
 
-    v2_score = (
+
+    v2_count = len(
         st.session_state
         .v2_evaluation[
-            "overall_score"
+            "compliance_findings"
         ]
     )
 
 
-    v1_risk = (
-        st.session_state
-        .v1_evaluation[
-            "unsupported_claim_risk"
-        ]
+    st.subheader(
+        "Revision Result"
     )
 
-    v2_risk = (
-        st.session_state
-        .v2_evaluation[
-            "unsupported_claim_risk"
-        ]
+
+    col1, col2 = st.columns(
+        2
+    )
+
+
+    col1.metric(
+        "Blocking Findings",
+        f"{v2_count}",
+        delta=(
+            v2_count - v1_count
+        ),
+        delta_color="inverse",
     )
 
 
     score_change = round(
-        v2_score - v1_score,
+        st.session_state
+        .v2_evaluation[
+            "heuristic_composite_score"
+        ]
+
+        - st.session_state
+        .v1_evaluation[
+            "heuristic_composite_score"
+        ],
+
         1,
     )
 
-    risk_reduction = (
-        v1_risk - v2_risk
-    )
 
-
-    result_col1, result_col2 = (
-        st.columns(2)
-    )
-
-
-    result_col1.metric(
-        "Overall Score Change",
+    col2.metric(
+        "Diagnostic Score Change",
         f"{score_change:+.1f}",
     )
 
 
-    result_col2.metric(
-        "Claim Risk Reduction",
-        f"{risk_reduction:+.1f}",
-        help=(
-            "Positive means unsupported "
-            "claim risk decreased."
-        ),
-    )
-
-
     if (
-        score_change > 0
-        and risk_reduction >= 0
+        v1_count > 0
+        and v2_count == 0
     ):
 
         st.success(
-            "Revision improved the overall quality "
-            "without increasing unsupported claim risk."
+            "The previously detected blocking "
+            "compliance findings were removed "
+            "in the current re-check."
+        )
+
+
+    elif v2_count < v1_count:
+
+        st.warning(
+            "Some blocking findings were removed, "
+            "but additional compliance attention "
+            "may still be required."
         )
 
 
     elif (
-        score_change > 0
-        and risk_reduction < 0
+        v1_count > 0
+        and v2_count >= v1_count
     ):
 
-        st.warning(
-            "Revision improved the overall score, "
-            "but unsupported claim risk increased."
+        st.error(
+            "The compliance revision did not "
+            "eliminate the blocking findings."
         )
 
-
-    elif score_change == 0:
-
-        st.info(
-            "Revision did not materially change "
-            "the overall score."
-        )
-
-
-    else:
-
-        st.warning(
-            "Revision reduced the overall score. "
-            "The revision strategy may require improvement."
-        )
-
-
-# =========================================================
-# Footer
-# =========================================================
 
 st.divider()
 
 st.caption(
     "GrowthPilot MVP · "
-    "Model Selection + AI Evaluation + "
-    "Automated Revision"
+    "Policy-Grounded Compliance Review + "
+    "Human-in-the-Loop Quality Advisory"
 )

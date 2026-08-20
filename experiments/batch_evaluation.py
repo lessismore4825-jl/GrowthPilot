@@ -1,20 +1,31 @@
+import hashlib
 import json
+import re
 import time
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
 
+from src.evaluator import (
+    compare_contents_pairwise,
+    evaluate_content,
+)
 from src.generator import generate_content
-from src.evaluator import evaluate_content
-from src.reviser import revise_content
 from src.llm_client import MODELS
+from src.reviser import fix_compliance_issues
 
 
 # =========================================================
 # Paths
 # =========================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parent
+    .parent
+)
 
 DATA_FILE = (
     PROJECT_ROOT
@@ -43,6 +54,11 @@ JUDGE_RESULTS_FILE = (
     / "judge_results.csv"
 )
 
+PAIRWISE_RESULTS_FILE = (
+    RESULTS_DIR
+    / "pairwise_results.csv"
+)
+
 
 # =========================================================
 # Experiment Configuration
@@ -59,20 +75,26 @@ JUDGE_MODELS = [
 ]
 
 
-QUALITY_THRESHOLD = 9.0
-
-CLAIM_RISK_THRESHOLD = 2
-
-
-# Judge can try:
-#
-# Attempt 1
-# ↓ failure
-# Attempt 2
-#
-# If both fail, that Judge is marked FAILED.
-#
+# One normal attempt + one retry.
 JUDGE_MAX_ATTEMPTS = 2
+
+
+# Balance A/B positions across pairwise comparisons.
+#
+# This helps reduce systematic Position Bias
+# without doubling the number of Judge calls.
+BALANCE_PAIRWISE_ORDER = True
+
+
+# Evidence similarity threshold used when combining
+# Cross-Judge compliance findings.
+#
+# This is NOT a quality threshold.
+#
+# It is only used to determine whether two Judges
+# are referring to essentially the same problematic
+# piece of generated content.
+FINDING_EVIDENCE_SIMILARITY_THRESHOLD = 0.85
 
 
 # =========================================================
@@ -85,7 +107,7 @@ SCORE_FIELDS = [
     "selling_point_coverage",
     "factual_consistency",
     "unsupported_claim_risk",
-    "overall_score",
+    "heuristic_composite_score",
 ]
 
 
@@ -95,7 +117,9 @@ SCORE_FIELDS = [
 
 def load_cases() -> list:
     """
-    Load evaluation cases from data/evaluation_cases.json.
+    Load evaluation cases from:
+
+    data/evaluation_cases.json
 
     Supports either:
 
@@ -128,20 +152,30 @@ def load_cases() -> list:
         encoding="utf-8",
     ) as file:
 
-        data = json.load(file)
+        data = json.load(
+            file
+        )
 
 
-    if isinstance(data, list):
+    if isinstance(
+        data,
+        list,
+    ):
 
         cases = data
 
 
     elif (
-        isinstance(data, dict)
+        isinstance(
+            data,
+            dict,
+        )
         and "cases" in data
     ):
 
-        cases = data["cases"]
+        cases = data[
+            "cases"
+        ]
 
 
     else:
@@ -172,12 +206,16 @@ def get_case_id(
     index: int,
 ) -> str:
     """
-    Return the case ID.
+    Return case ID.
     """
 
     return (
-        case.get("case_id")
-        or case.get("id")
+        case.get(
+            "case_id"
+        )
+        or case.get(
+            "id"
+        )
         or f"CASE_{index:03d}"
     )
 
@@ -186,15 +224,45 @@ def get_challenge(
     case: dict,
 ) -> str:
     """
-    Return the case challenge / description
-    when available.
+    Return case challenge / description.
     """
 
     return (
-        case.get("challenge")
-        or case.get("description")
+        case.get(
+            "challenge"
+        )
+        or case.get(
+            "description"
+        )
         or ""
     )
+
+
+def get_policy_context(
+    case: dict,
+) -> str:
+    """
+    Return optional external policy context.
+
+    Current cases may leave this empty.
+
+    Later this field can contain:
+
+    - advertising regulations
+    - platform rules
+    - internal brand policies
+    - RAG-retrieved policy evidence
+
+    Brand Information and Campaign Brief
+    are still separately supplied to the Judge.
+    """
+
+    return str(
+        case.get(
+            "policy_context",
+            "",
+        )
+    ).strip()
 
 
 def validate_case(
@@ -221,8 +289,20 @@ def validate_case(
             )
 
 
+        if not str(
+            case[
+                field
+            ]
+        ).strip():
+
+            raise ValueError(
+                f"{case_id} has an empty "
+                f"required field: {field}"
+            )
+
+
 # =========================================================
-# Generic Timing Helper
+# Generic Helpers
 # =========================================================
 
 def timed_call(
@@ -236,11 +316,15 @@ def timed_call(
     latency_seconds
     """
 
-    start_time = time.perf_counter()
+    start_time = (
+        time.perf_counter()
+    )
+
 
     result = function(
         **kwargs
     )
+
 
     latency = (
         time.perf_counter()
@@ -257,6 +341,100 @@ def timed_call(
     )
 
 
+def get_heuristic_score(
+    evaluation: dict,
+):
+    """
+    Read the new heuristic diagnostic score.
+
+    overall_score fallback is retained only
+    for safer migration from the older schema.
+
+    New evaluator should return:
+
+    heuristic_composite_score
+    """
+
+    if (
+        "heuristic_composite_score"
+        in evaluation
+    ):
+
+        return evaluation[
+            "heuristic_composite_score"
+        ]
+
+
+    if (
+        "overall_score"
+        in evaluation
+    ):
+
+        return evaluation[
+            "overall_score"
+        ]
+
+
+    raise KeyError(
+        "Evaluation contains neither "
+        "heuristic_composite_score "
+        "nor overall_score."
+    )
+
+
+def get_blocking_count(
+    evaluation: dict,
+) -> int:
+    """
+    Return number of blocking
+    compliance findings.
+    """
+
+    if (
+        "blocking_compliance_issue_count"
+        in evaluation
+    ):
+
+        return int(
+            evaluation[
+                "blocking_compliance_issue_count"
+            ]
+        )
+
+
+    return len(
+        evaluation.get(
+            "compliance_findings",
+            [],
+        )
+    )
+
+
+def safe_numeric_mean(
+    series: pd.Series,
+):
+    """
+    Return numeric mean.
+
+    Invalid / empty values are ignored.
+    """
+
+    numeric = pd.to_numeric(
+        series,
+        errors="coerce",
+    ).dropna()
+
+
+    if numeric.empty:
+
+        return None
+
+
+    return float(
+        numeric.mean()
+    )
+
+
 # =========================================================
 # Cross-Judge Evaluation
 # =========================================================
@@ -268,36 +446,25 @@ def run_all_judges(
     version: str,
     brand_info: str,
     campaign_brief: str,
+    policy_context: str,
     content: str,
     judge_rows: list,
 ) -> dict:
     """
-    Evaluate one piece of content with every Judge.
+    Evaluate one output with:
 
-    Current design:
+    Step Judge
+        +
+    Qwen Judge
 
-    Candidate Output
-        ↓
-    ├── Step Judge
-    └── Qwen Judge
+    Each Judge returns:
 
-    Each Judge can attempt evaluation up to
-    JUDGE_MAX_ATTEMPTS times.
+    1. Policy-grounded compliance findings
+    2. Non-blocking advisory findings
+    3. Diagnostic dimension scores
 
-    Returns:
-
-    {
-        "step": {
-            "evaluation": {...},
-            "latency": 12.3,
-            "error": None,
-            "attempts": 1
-        },
-
-        "qwen": {
-            ...
-        }
-    }
+    Each Judge may retry when API / parsing
+    errors occur.
     """
 
     results = {}
@@ -350,6 +517,8 @@ def run_all_judges(
 
                     generated_content=content,
 
+                    policy_context=policy_context,
+
                     judge_model_key=judge_model,
                 )
 
@@ -365,17 +534,22 @@ def run_all_judges(
                 )
 
 
-                successful_attempt = attempt
+                successful_attempt = (
+                    attempt
+                )
+
 
                 final_error = None
 
 
                 print(
                     f"      ✅ "
-                    f"Overall="
-                    f"{evaluation['overall_score']}"
+                    f"Heuristic="
+                    f"{get_heuristic_score(evaluation)}"
                     f" | Risk="
                     f"{evaluation['unsupported_claim_risk']}"
+                    f" | Blocking="
+                    f"{get_blocking_count(evaluation)}"
                     f" | Attempt latency="
                     f"{attempt_latency:.2f}s"
                 )
@@ -404,8 +578,7 @@ def run_all_judges(
 
                 print(
                     f"      ⚠️ Attempt "
-                    f"{attempt} failed "
-                    f"after "
+                    f"{attempt} failed after "
                     f"{attempt_latency:.2f}s: "
                     f"{error}"
                 )
@@ -511,24 +684,52 @@ def run_all_judges(
                             "unsupported_claim_risk"
                         ],
 
-                    "overall_score":
-                        evaluation[
-                            "overall_score"
-                        ],
+                    "heuristic_composite_score":
+                        get_heuristic_score(
+                            evaluation
+                        ),
 
-                    "issues":
+                    "blocking_count":
+                        get_blocking_count(
+                            evaluation
+                        ),
+
+                    "blocking_flag":
+                        (
+                            get_blocking_count(
+                                evaluation
+                            )
+                            > 0
+                        ),
+
+                    "compliance_status":
+                        evaluation.get(
+                            "compliance_status",
+                            "",
+                        ),
+
+                    "compliance_findings":
                         json.dumps(
                             evaluation.get(
-                                "issues",
+                                "compliance_findings",
                                 [],
                             ),
                             ensure_ascii=False,
                         ),
 
-                    "suggestions":
+                    "advisory_findings":
                         json.dumps(
                             evaluation.get(
-                                "suggestions",
+                                "advisory_findings",
+                                [],
+                            ),
+                            ensure_ascii=False,
+                        ),
+
+                    "review_notes":
+                        json.dumps(
+                            evaluation.get(
+                                "review_notes",
                                 [],
                             ),
                             ensure_ascii=False,
@@ -549,7 +750,8 @@ def run_all_judges(
             print(
                 f"      ❌ Judge failed "
                 f"after "
-                f"{JUDGE_MAX_ATTEMPTS} attempts."
+                f"{JUDGE_MAX_ATTEMPTS} "
+                f"attempts."
             )
 
 
@@ -621,13 +823,25 @@ def run_all_judges(
                     "unsupported_claim_risk":
                         None,
 
-                    "overall_score":
+                    "heuristic_composite_score":
                         None,
 
-                    "issues":
+                    "blocking_count":
+                        None,
+
+                    "blocking_flag":
+                        None,
+
+                    "compliance_status":
                         "",
 
-                    "suggestions":
+                    "compliance_findings":
+                        "",
+
+                    "advisory_findings":
+                        "",
+
+                    "review_notes":
                         "",
 
                     "error":
@@ -647,26 +861,31 @@ def aggregate_judges(
     judge_results: dict,
 ) -> dict:
     """
-    Calculate Cross-Judge metrics.
+    Aggregate Judge results without using
+    an arbitrary numerical pass/fail threshold.
 
-    IMPORTANT:
+    Compliance states:
 
-    A valid Cross-Judge result requires
-    ALL configured Judges to succeed.
+    CONSENSUS_BLOCKING
+        Both Judges detect one or more
+        blocking compliance findings.
 
-    This prevents invalid comparisons such as:
+    CONSENSUS_NO_BLOCKING
+        Both Judges detect no
+        blocking compliance findings.
 
-    V1:
-        only Qwen Judge
+    JUDGE_DISAGREEMENT
+        One Judge detects blocking findings
+        while the other does not.
 
-    V2:
-        Step + Qwen Judges
-
-    Those two averages would not be comparable.
+    Judge disagreement is routed to
+    Human Review rather than automatic revision.
     """
 
     valid_evaluations = [
-        result["evaluation"]
+        result[
+            "evaluation"
+        ]
 
         for result
         in judge_results.values()
@@ -709,14 +928,29 @@ def aggregate_judges(
             "panel_complete":
                 False,
 
-            "avg_overall_score":
+            "avg_heuristic_score":
                 None,
 
             "avg_claim_risk":
                 None,
 
+            "avg_blocking_count":
+                None,
+
             "judge_score_gap":
                 None,
+
+            "any_blocking":
+                None,
+
+            "all_blocking":
+                None,
+
+            "blocking_agreement":
+                None,
+
+            "compliance_decision":
+                "INCOMPLETE_PANEL",
         }
 
 
@@ -724,49 +958,91 @@ def aggregate_judges(
     # Complete Judge Panel
     # =====================================================
 
-    avg_overall_score = sum(
-        evaluation[
-            "overall_score"
-        ]
+    heuristic_scores = [
+        get_heuristic_score(
+            evaluation
+        )
 
         for evaluation
         in valid_evaluations
-    ) / valid_judge_count
+    ]
 
 
-    avg_claim_risk = sum(
+    claim_risks = [
         evaluation[
             "unsupported_claim_risk"
         ]
 
         for evaluation
         in valid_evaluations
-    ) / valid_judge_count
+    ]
+
+
+    blocking_counts = [
+        get_blocking_count(
+            evaluation
+        )
+
+        for evaluation
+        in valid_evaluations
+    ]
+
+
+    blocking_flags = [
+        count > 0
+
+        for count
+        in blocking_counts
+    ]
+
+
+    avg_heuristic_score = (
+        sum(
+            heuristic_scores
+        )
+        / valid_judge_count
+    )
+
+
+    avg_claim_risk = (
+        sum(
+            claim_risks
+        )
+        / valid_judge_count
+    )
+
+
+    avg_blocking_count = (
+        sum(
+            blocking_counts
+        )
+        / valid_judge_count
+    )
 
 
     # -----------------------------------------------------
-    # Judge disagreement
+    # Diagnostic Score Gap
     # -----------------------------------------------------
 
     step_score = (
-        judge_results[
-            "step"
-        ][
-            "evaluation"
-        ][
-            "overall_score"
-        ]
+        get_heuristic_score(
+            judge_results[
+                "step"
+            ][
+                "evaluation"
+            ]
+        )
     )
 
 
     qwen_score = (
-        judge_results[
-            "qwen"
-        ][
-            "evaluation"
-        ][
-            "overall_score"
-        ]
+        get_heuristic_score(
+            judge_results[
+                "qwen"
+            ][
+                "evaluation"
+            ]
+        )
     )
 
 
@@ -774,6 +1050,51 @@ def aggregate_judges(
         step_score
         - qwen_score
     )
+
+
+    # -----------------------------------------------------
+    # Compliance Agreement
+    # -----------------------------------------------------
+
+    any_blocking = any(
+        blocking_flags
+    )
+
+
+    all_blocking = all(
+        blocking_flags
+    )
+
+
+    blocking_agreement = (
+        len(
+            set(
+                blocking_flags
+            )
+        )
+        == 1
+    )
+
+
+    if all_blocking:
+
+        compliance_decision = (
+            "CONSENSUS_BLOCKING"
+        )
+
+
+    elif not any_blocking:
+
+        compliance_decision = (
+            "CONSENSUS_NO_BLOCKING"
+        )
+
+
+    else:
+
+        compliance_decision = (
+            "JUDGE_DISAGREEMENT"
+        )
 
 
     return {
@@ -786,9 +1107,9 @@ def aggregate_judges(
         "panel_complete":
             True,
 
-        "avg_overall_score":
+        "avg_heuristic_score":
             round(
-                avg_overall_score,
+                avg_heuristic_score,
                 2,
             ),
 
@@ -798,95 +1119,34 @@ def aggregate_judges(
                 2,
             ),
 
+        "avg_blocking_count":
+            round(
+                avg_blocking_count,
+                2,
+            ),
+
         "judge_score_gap":
             round(
                 judge_score_gap,
                 2,
             ),
+
+        "any_blocking":
+            any_blocking,
+
+        "all_blocking":
+            all_blocking,
+
+        "blocking_agreement":
+            blocking_agreement,
+
+        "compliance_decision":
+            compliance_decision,
     }
 
 
 # =========================================================
-# Benchmark Quality Gate
-# =========================================================
-
-def needs_revision(
-    judge_results: dict,
-) -> bool:
-    """
-    Decide whether V1 requires revision.
-
-    Requires a complete Judge Panel.
-
-    Revision is triggered when:
-
-    1. Cross-Judge average overall score < 9.0
-
-    OR
-
-    2. Cross-Judge average unsupported claim risk > 2
-
-    OR
-
-    3. Either Judge identifies concrete issues.
-    """
-
-    aggregate = aggregate_judges(
-        judge_results
-    )
-
-
-    if not aggregate[
-        "panel_complete"
-    ]:
-
-        raise ValueError(
-            "Cannot make revision decision "
-            "because the Judge Panel is incomplete."
-        )
-
-
-    if (
-        aggregate[
-            "avg_overall_score"
-        ] < QUALITY_THRESHOLD
-    ):
-
-        return True
-
-
-    if (
-        aggregate[
-            "avg_claim_risk"
-        ] > CLAIM_RISK_THRESHOLD
-    ):
-
-        return True
-
-
-    for result in judge_results.values():
-
-        evaluation = result.get(
-            "evaluation"
-        )
-
-
-        if (
-            evaluation
-            and evaluation.get(
-                "issues",
-                [],
-            )
-        ):
-
-            return True
-
-
-    return False
-
-
-# =========================================================
-# Add Judge Scores to Main Row
+# Add Judge Results to Main Row
 # =========================================================
 
 def add_judge_scores_to_row(
@@ -895,8 +1155,9 @@ def add_judge_scores_to_row(
     judge_results: dict,
 ):
     """
-    Add each Judge's individual scores into
-    the main wide-format CSV row.
+    Add each Judge's individual scores
+    and findings to the wide-format
+    batch_results.csv row.
     """
 
     for judge_model in JUDGE_MODELS:
@@ -912,21 +1173,6 @@ def add_judge_scores_to_row(
         )
 
 
-        latency = result.get(
-            "latency"
-        )
-
-
-        error = result.get(
-            "error"
-        )
-
-
-        attempts = result.get(
-            "attempts"
-        )
-
-
         prefix = (
             f"{version}_"
             f"{judge_model}_judge"
@@ -935,55 +1181,1488 @@ def add_judge_scores_to_row(
 
         row[
             f"{prefix}_latency"
-        ] = latency
+        ] = result.get(
+            "latency"
+        )
 
 
         row[
             f"{prefix}_attempts"
-        ] = attempts
+        ] = result.get(
+            "attempts"
+        )
 
 
         row[
             f"{prefix}_error"
-        ] = error or ""
+        ] = (
+            result.get(
+                "error"
+            )
+            or ""
+        )
 
+
+        # =================================================
+        # Judge succeeded
+        # =================================================
 
         if evaluation:
 
             for field in SCORE_FIELDS:
 
-                row[
-                    f"{prefix}_"
-                    f"{field}"
-                ] = evaluation[
+                if (
                     field
-                ]
+                    == "heuristic_composite_score"
+                ):
+
+                    value = (
+                        get_heuristic_score(
+                            evaluation
+                        )
+                    )
+
+
+                else:
+
+                    value = evaluation[
+                        field
+                    ]
+
+
+                row[
+                    f"{prefix}_{field}"
+                ] = value
 
 
             row[
-                f"{prefix}_issues"
+                f"{prefix}_blocking_count"
+            ] = get_blocking_count(
+                evaluation
+            )
+
+
+            row[
+                f"{prefix}_blocking_flag"
+            ] = (
+                get_blocking_count(
+                    evaluation
+                )
+                > 0
+            )
+
+
+            row[
+                f"{prefix}_compliance_findings"
             ] = json.dumps(
                 evaluation.get(
-                    "issues",
+                    "compliance_findings",
                     [],
                 ),
                 ensure_ascii=False,
             )
 
 
+            row[
+                f"{prefix}_advisory_findings"
+            ] = json.dumps(
+                evaluation.get(
+                    "advisory_findings",
+                    [],
+                ),
+                ensure_ascii=False,
+            )
+
+
+            row[
+                f"{prefix}_review_notes"
+            ] = json.dumps(
+                evaluation.get(
+                    "review_notes",
+                    [],
+                ),
+                ensure_ascii=False,
+            )
+
+
+        # =================================================
+        # Judge failed
+        # =================================================
+
         else:
 
             for field in SCORE_FIELDS:
 
                 row[
-                    f"{prefix}_"
-                    f"{field}"
+                    f"{prefix}_{field}"
                 ] = None
 
 
             row[
-                f"{prefix}_issues"
+                f"{prefix}_blocking_count"
+            ] = None
+
+
+            row[
+                f"{prefix}_blocking_flag"
+            ] = None
+
+
+            row[
+                f"{prefix}_compliance_findings"
             ] = ""
+
+
+            row[
+                f"{prefix}_advisory_findings"
+            ] = ""
+
+
+            row[
+                f"{prefix}_review_notes"
+            ] = ""
+
+
+# =========================================================
+# Compliance Finding Deduplication Helpers
+# =========================================================
+
+def normalize_finding_text(
+    text: str,
+) -> str:
+    """
+    Normalize text for Cross-Judge finding matching.
+
+    Removes differences caused only by:
+
+    - uppercase / lowercase
+    - whitespace
+    - punctuation
+    - Chinese punctuation
+    - quotation marks
+
+    This does NOT alter the original finding
+    that is eventually saved to CSV.
+    """
+
+    text = str(
+        text
+        or ""
+    ).strip().casefold()
+
+
+    # Remove whitespace
+    text = re.sub(
+        r"\s+",
+        "",
+        text,
+    )
+
+
+    # Keep letters, numbers and Chinese characters.
+    # Remove punctuation / quotation marks.
+    text = re.sub(
+        r"[^\w\u4e00-\u9fff]",
+        "",
+        text,
+    )
+
+
+    return text
+
+
+def evidence_similarity(
+    evidence_a: str,
+    evidence_b: str,
+) -> float:
+    """
+    Measure whether two Judges are referring
+    to essentially the same problematic text.
+
+    Uses:
+
+    1. Exact normalized match
+    2. Substring containment
+    3. SequenceMatcher similarity
+
+    This is used only for deduplication,
+    NOT for content quality evaluation.
+    """
+
+    normalized_a = normalize_finding_text(
+        evidence_a
+    )
+
+    normalized_b = normalize_finding_text(
+        evidence_b
+    )
+
+
+    if not normalized_a or not normalized_b:
+
+        return 0.0
+
+
+    if normalized_a == normalized_b:
+
+        return 1.0
+
+
+    # If one Judge quotes a slightly longer
+    # version of the same problematic phrase.
+    if (
+        normalized_a in normalized_b
+        or normalized_b in normalized_a
+    ):
+
+        shorter_length = min(
+            len(
+                normalized_a
+            ),
+            len(
+                normalized_b
+            ),
+        )
+
+
+        longer_length = max(
+            len(
+                normalized_a
+            ),
+            len(
+                normalized_b
+            ),
+        )
+
+
+        if longer_length == 0:
+
+            return 0.0
+
+
+        containment_ratio = (
+            shorter_length
+            / longer_length
+        )
+
+
+        # Exact phrase contained inside a moderately
+        # longer quotation should still count
+        # as the same evidence.
+        if containment_ratio >= 0.55:
+
+            return max(
+                0.90,
+                containment_ratio,
+            )
+
+
+    return SequenceMatcher(
+        None,
+        normalized_a,
+        normalized_b,
+    ).ratio()
+
+
+def findings_refer_to_same_issue(
+    finding_a: dict,
+    finding_b: dict,
+) -> bool:
+    """
+    Determine whether two Judge findings
+    are essentially about the same issue.
+
+    Primary matching signal:
+
+    same / highly similar evidence.
+
+    Policy source is used as an additional
+    safeguard when available.
+
+    policy_basis is intentionally NOT required
+    to be identical because Step and Qwen may
+    phrase the same governing rule differently.
+    """
+
+    evidence_a = finding_a.get(
+        "evidence",
+        "",
+    )
+
+    evidence_b = finding_b.get(
+        "evidence",
+        "",
+    )
+
+
+    similarity = evidence_similarity(
+        evidence_a,
+        evidence_b,
+    )
+
+
+    if (
+        similarity
+        < FINDING_EVIDENCE_SIMILARITY_THRESHOLD
+    ):
+
+        return False
+
+
+    source_a = normalize_finding_text(
+        finding_a.get(
+            "policy_source",
+            "",
+        )
+    )
+
+
+    source_b = normalize_finding_text(
+        finding_b.get(
+            "policy_source",
+            "",
+        )
+    )
+
+
+    # If both have explicit sources and the sources
+    # are completely different, do not merge them.
+    #
+    # Example:
+    #
+    # one finding grounded in Brand Information
+    # another grounded in Additional Policy Context
+    #
+    # They may deserve separate provenance.
+    if (
+        source_a
+        and source_b
+        and source_a != source_b
+    ):
+
+        return False
+
+
+    return True
+
+
+def split_merged_text(
+    text: str,
+) -> list:
+    """
+    Convert a previously merged text value into
+    reusable components.
+
+    Values are joined with:
+
+    " | "
+
+    so repeated merging does not create duplicates.
+    """
+
+    text = str(
+        text
+        or ""
+    ).strip()
+
+
+    if not text:
+
+        return []
+
+
+    return [
+        item.strip()
+
+        for item
+        in text.split(
+            " | "
+        )
+
+        if item.strip()
+    ]
+
+
+def merge_unique_text(
+    existing_text: str,
+    new_text: str,
+) -> str:
+    """
+    Merge two textual explanations while
+    preserving both Judges' useful information
+    and avoiding duplicate wording.
+    """
+
+    items = []
+
+
+    for value in [
+        existing_text,
+        new_text,
+    ]:
+
+        for item in split_merged_text(
+            value
+        ):
+
+            normalized_item = (
+                normalize_finding_text(
+                    item
+                )
+            )
+
+
+            if not normalized_item:
+
+                continue
+
+
+            duplicate = False
+
+
+            for existing_item in items:
+
+                existing_normalized = (
+                    normalize_finding_text(
+                        existing_item
+                    )
+                )
+
+
+                if (
+                    normalized_item
+                    == existing_normalized
+                ):
+
+                    duplicate = True
+
+                    break
+
+
+                similarity = SequenceMatcher(
+                    None,
+                    normalized_item,
+                    existing_normalized,
+                ).ratio()
+
+
+                if similarity >= 0.93:
+
+                    duplicate = True
+
+                    break
+
+
+            if not duplicate:
+
+                items.append(
+                    item
+                )
+
+
+    return " | ".join(
+        items
+    )
+
+
+def merge_reported_by(
+    existing,
+    new_judge: str,
+) -> list:
+    """
+    Merge Judge provenance.
+
+    Example:
+
+    ["step"]
+        +
+    "qwen"
+
+    →
+
+    ["step", "qwen"]
+    """
+
+    if isinstance(
+        existing,
+        list,
+    ):
+
+        reporters = [
+            str(
+                item
+            ).strip()
+
+            for item
+            in existing
+
+            if str(
+                item
+            ).strip()
+        ]
+
+
+    elif existing:
+
+        reporters = [
+            str(
+                existing
+            ).strip()
+        ]
+
+
+    else:
+
+        reporters = []
+
+
+    if (
+        new_judge
+        and new_judge
+        not in reporters
+    ):
+
+        reporters.append(
+            new_judge
+        )
+
+
+    return reporters
+
+
+def merge_compliance_finding(
+    existing: dict,
+    incoming: dict,
+    judge_model: str,
+) -> dict:
+    """
+    Merge two findings that refer to
+    the same underlying content issue.
+
+    Important:
+
+    We do NOT discard the second Judge's:
+
+    - policy basis
+    - reason
+    - required action
+    - provenance
+
+    Instead, useful non-duplicate information
+    is retained.
+    """
+
+    merged = dict(
+        existing
+    )
+
+
+    # =====================================================
+    # Evidence
+    # =====================================================
+
+    existing_evidence = str(
+        merged.get(
+            "evidence",
+            "",
+        )
+    ).strip()
+
+
+    incoming_evidence = str(
+        incoming.get(
+            "evidence",
+            "",
+        )
+    ).strip()
+
+
+    # Prefer the more complete quotation when
+    # one is simply a longer version of the other.
+    if (
+        len(
+            normalize_finding_text(
+                incoming_evidence
+            )
+        )
+        > len(
+            normalize_finding_text(
+                existing_evidence
+            )
+        )
+    ):
+
+        merged[
+            "evidence"
+        ] = incoming_evidence
+
+
+    # =====================================================
+    # Policy Source
+    # =====================================================
+
+    if not merged.get(
+        "policy_source"
+    ):
+
+        merged[
+            "policy_source"
+        ] = incoming.get(
+            "policy_source",
+            "",
+        )
+
+
+    # =====================================================
+    # Policy Basis
+    # =====================================================
+
+    merged[
+        "policy_basis"
+    ] = merge_unique_text(
+        merged.get(
+            "policy_basis",
+            "",
+        ),
+
+        incoming.get(
+            "policy_basis",
+            "",
+        ),
+    )
+
+
+    # =====================================================
+    # Reason
+    # =====================================================
+
+    merged[
+        "reason"
+    ] = merge_unique_text(
+        merged.get(
+            "reason",
+            "",
+        ),
+
+        incoming.get(
+            "reason",
+            "",
+        ),
+    )
+
+
+    # =====================================================
+    # Required Action
+    # =====================================================
+
+    merged[
+        "required_action"
+    ] = merge_unique_text(
+        merged.get(
+            "required_action",
+            "",
+        ),
+
+        incoming.get(
+            "required_action",
+            "",
+        ),
+    )
+
+
+    # =====================================================
+    # Judge Provenance
+    # =====================================================
+
+    merged[
+        "reported_by"
+    ] = merge_reported_by(
+        merged.get(
+            "reported_by"
+        ),
+
+        judge_model,
+    )
+
+
+    return merged
+
+
+# =========================================================
+# Combine Compliance Findings
+# =========================================================
+
+def combine_compliance_findings(
+    judge_results: dict,
+) -> list:
+    """
+    Combine policy-grounded compliance findings
+    from all successful Judges.
+
+    This function is called only when
+    both Judges agree that blocking
+    compliance issues exist.
+
+    IMPORTANT:
+
+    Step and Qwen often identify the same
+    problematic wording but describe:
+
+    - policy basis
+    - reason
+    - required action
+
+    slightly differently.
+
+    The old implementation used:
+
+    evidence + policy_source + policy_basis
+
+    as an exact deduplication key.
+
+    That caused duplicate findings when
+    policy_basis wording differed.
+
+    New behavior:
+
+    1. Compare normalized evidence.
+    2. Allow small quotation differences.
+    3. Require compatible policy provenance.
+    4. Merge the two Judges' explanations.
+    5. Preserve which Judges reported the issue.
+    """
+
+    combined = []
+
+
+    for judge_model in JUDGE_MODELS:
+
+        evaluation = (
+            judge_results
+            .get(
+                judge_model,
+                {},
+            )
+            .get(
+                "evaluation"
+            )
+        )
+
+
+        if not evaluation:
+
+            continue
+
+
+        findings = evaluation.get(
+            "compliance_findings",
+            [],
+        )
+
+
+        for finding in findings:
+
+            incoming = dict(
+                finding
+            )
+
+
+            incoming[
+                "reported_by"
+            ] = [
+                judge_model
+            ]
+
+
+            matched_index = None
+
+
+            # =============================================
+            # Search existing combined findings
+            # =============================================
+
+            for index, existing in enumerate(
+                combined
+            ):
+
+                if findings_refer_to_same_issue(
+                    existing,
+                    incoming,
+                ):
+
+                    matched_index = (
+                        index
+                    )
+
+                    break
+
+
+            # =============================================
+            # New unique finding
+            # =============================================
+
+            if matched_index is None:
+
+                combined.append(
+                    incoming
+                )
+
+
+            # =============================================
+            # Same underlying issue:
+            # merge Judge evidence / rationale
+            # =============================================
+
+            else:
+
+                combined[
+                    matched_index
+                ] = (
+                    merge_compliance_finding(
+                        existing=combined[
+                            matched_index
+                        ],
+
+                        incoming=incoming,
+
+                        judge_model=judge_model,
+                    )
+                )
+
+
+    return combined
+
+
+# =========================================================
+# Pairwise Order Helper
+# =========================================================
+
+def should_swap_pairwise_order(
+    case_id: str,
+    candidate_model: str,
+    judge_model: str,
+) -> bool:
+    """
+    Deterministically vary A/B order.
+
+    This reduces systematic Position Bias
+    across the benchmark without doubling
+    the number of API calls.
+
+    The same Case × Candidate × Judge
+    always receives the same order.
+    """
+
+    if not BALANCE_PAIRWISE_ORDER:
+
+        return False
+
+
+    key = (
+        f"{case_id}|"
+        f"{candidate_model}|"
+        f"{judge_model}"
+    )
+
+
+    digest = hashlib.sha256(
+        key.encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+    return (
+        int(
+            digest[
+                -1
+            ],
+            16,
+        )
+        % 2
+        == 1
+    )
+
+
+def normalize_pairwise_preference(
+    raw_preference: str,
+    a_version: str,
+    b_version: str,
+) -> str:
+    """
+    Convert:
+
+    A / B / tie
+
+    into:
+
+    v1 / v2 / tie
+
+    regardless of presentation order.
+    """
+
+    preference = str(
+        raw_preference
+    ).strip().lower()
+
+
+    if preference == "a":
+
+        return a_version
+
+
+    if preference == "b":
+
+        return b_version
+
+
+    if preference == "tie":
+
+        return "tie"
+
+
+    raise ValueError(
+        f"Invalid pairwise preference: "
+        f"{raw_preference}"
+    )
+
+
+# =========================================================
+# Pairwise Cross-Judge Evaluation
+# =========================================================
+
+def run_pairwise_judges(
+    case_id: str,
+    challenge: str,
+    candidate_model: str,
+    brand_info: str,
+    campaign_brief: str,
+    policy_context: str,
+    v1_content: str,
+    v2_content: str,
+    pairwise_rows: list,
+) -> dict:
+    """
+    Compare V1 vs V2 with:
+
+    Step Judge
+    +
+    Qwen Judge
+
+    Numerical scores are NOT used
+    to decide the pairwise winner.
+
+    A/B order is balanced across
+    comparisons and normalized back
+    to:
+
+    v1
+    v2
+    tie
+    """
+
+    results = {}
+
+
+    for judge_model in JUDGE_MODELS:
+
+        print(
+            f"\n      Pairwise Judge: "
+            f"{judge_model}"
+        )
+
+
+        swap_order = (
+            should_swap_pairwise_order(
+                case_id=case_id,
+
+                candidate_model=(
+                    candidate_model
+                ),
+
+                judge_model=(
+                    judge_model
+                ),
+            )
+        )
+
+
+        if swap_order:
+
+            content_a = (
+                v2_content
+            )
+
+            content_b = (
+                v1_content
+            )
+
+            a_version = "v2"
+
+            b_version = "v1"
+
+
+        else:
+
+            content_a = (
+                v1_content
+            )
+
+            content_b = (
+                v2_content
+            )
+
+            a_version = "v1"
+
+            b_version = "v2"
+
+
+        result = None
+
+        final_error = None
+
+        successful_attempt = None
+
+        total_latency = 0.0
+
+
+        # =================================================
+        # Retry Loop
+        # =================================================
+
+        for attempt in range(
+            1,
+            JUDGE_MAX_ATTEMPTS + 1,
+        ):
+
+            print(
+                f"      Attempt "
+                f"{attempt}/"
+                f"{JUDGE_MAX_ATTEMPTS} "
+                f"(A={a_version}, "
+                f"B={b_version})"
+            )
+
+
+            attempt_start = (
+                time.perf_counter()
+            )
+
+
+            try:
+
+                result = (
+                    compare_contents_pairwise(
+                        brand_info=brand_info,
+
+                        campaign_brief=(
+                            campaign_brief
+                        ),
+
+                        content_a=content_a,
+
+                        content_b=content_b,
+
+                        policy_context=(
+                            policy_context
+                        ),
+
+                        judge_model_key=(
+                            judge_model
+                        ),
+                    )
+                )
+
+
+                attempt_latency = (
+                    time.perf_counter()
+                    - attempt_start
+                )
+
+
+                total_latency += (
+                    attempt_latency
+                )
+
+
+                successful_attempt = (
+                    attempt
+                )
+
+
+                final_error = None
+
+
+                normalized_preference = (
+                    normalize_pairwise_preference(
+                        raw_preference=(
+                            result[
+                                "preference"
+                            ]
+                        ),
+
+                        a_version=a_version,
+
+                        b_version=b_version,
+                    )
+                )
+
+
+                print(
+                    f"      ✅ "
+                    f"Raw="
+                    f"{result['preference']}"
+                    f" | Normalized="
+                    f"{normalized_preference}"
+                    f" | Attempt latency="
+                    f"{attempt_latency:.2f}s"
+                )
+
+
+                break
+
+
+            except Exception as error:
+
+                attempt_latency = (
+                    time.perf_counter()
+                    - attempt_start
+                )
+
+
+                total_latency += (
+                    attempt_latency
+                )
+
+
+                final_error = str(
+                    error
+                )
+
+
+                print(
+                    f"      ⚠️ Attempt "
+                    f"{attempt} failed after "
+                    f"{attempt_latency:.2f}s: "
+                    f"{error}"
+                )
+
+
+                if (
+                    attempt
+                    < JUDGE_MAX_ATTEMPTS
+                ):
+
+                    print(
+                        "      Retrying "
+                        "Pairwise Judge..."
+                    )
+
+
+        total_latency = round(
+            total_latency,
+            2,
+        )
+
+
+        # =================================================
+        # Pairwise SUCCESS
+        # =================================================
+
+        if result is not None:
+
+            normalized_preference = (
+                normalize_pairwise_preference(
+                    raw_preference=(
+                        result[
+                            "preference"
+                        ]
+                    ),
+
+                    a_version=a_version,
+
+                    b_version=b_version,
+                )
+            )
+
+
+            results[
+                judge_model
+            ] = {
+                "preference":
+                    normalized_preference,
+
+                "raw_preference":
+                    result[
+                        "preference"
+                    ],
+
+                "a_version":
+                    a_version,
+
+                "b_version":
+                    b_version,
+
+                "reason":
+                    result.get(
+                        "reason",
+                        "",
+                    ),
+
+                "key_difference":
+                    result.get(
+                        "key_difference",
+                        "",
+                    ),
+
+                "latency":
+                    total_latency,
+
+                "attempts":
+                    successful_attempt,
+
+                "error":
+                    None,
+            }
+
+
+            pairwise_rows.append(
+                {
+                    "case_id":
+                        case_id,
+
+                    "challenge":
+                        challenge,
+
+                    "candidate_model":
+                        candidate_model,
+
+                    "candidate_model_id":
+                        MODELS[
+                            candidate_model
+                        ],
+
+                    "judge_model":
+                        judge_model,
+
+                    "judge_model_id":
+                        MODELS[
+                            judge_model
+                        ],
+
+                    "status":
+                        "SUCCESS",
+
+                    "attempts":
+                        successful_attempt,
+
+                    "evaluation_latency":
+                        total_latency,
+
+                    "a_version":
+                        a_version,
+
+                    "b_version":
+                        b_version,
+
+                    "raw_preference":
+                        result[
+                            "preference"
+                        ],
+
+                    "normalized_preference":
+                        normalized_preference,
+
+                    "reason":
+                        result.get(
+                            "reason",
+                            "",
+                        ),
+
+                    "key_difference":
+                        result.get(
+                            "key_difference",
+                            "",
+                        ),
+
+                    "error":
+                        "",
+                }
+            )
+
+
+        # =================================================
+        # Pairwise FAILED
+        # =================================================
+
+        else:
+
+            print(
+                f"      ❌ Pairwise Judge "
+                f"failed after "
+                f"{JUDGE_MAX_ATTEMPTS} "
+                f"attempts."
+            )
+
+
+            results[
+                judge_model
+            ] = {
+                "preference":
+                    None,
+
+                "raw_preference":
+                    None,
+
+                "a_version":
+                    a_version,
+
+                "b_version":
+                    b_version,
+
+                "reason":
+                    "",
+
+                "key_difference":
+                    "",
+
+                "latency":
+                    total_latency,
+
+                "attempts":
+                    JUDGE_MAX_ATTEMPTS,
+
+                "error":
+                    final_error,
+            }
+
+
+            pairwise_rows.append(
+                {
+                    "case_id":
+                        case_id,
+
+                    "challenge":
+                        challenge,
+
+                    "candidate_model":
+                        candidate_model,
+
+                    "candidate_model_id":
+                        MODELS[
+                            candidate_model
+                        ],
+
+                    "judge_model":
+                        judge_model,
+
+                    "judge_model_id":
+                        MODELS[
+                            judge_model
+                        ],
+
+                    "status":
+                        "FAILED",
+
+                    "attempts":
+                        JUDGE_MAX_ATTEMPTS,
+
+                    "evaluation_latency":
+                        total_latency,
+
+                    "a_version":
+                        a_version,
+
+                    "b_version":
+                        b_version,
+
+                    "raw_preference":
+                        None,
+
+                    "normalized_preference":
+                        None,
+
+                    "reason":
+                        "",
+
+                    "key_difference":
+                        "",
+
+                    "error":
+                        final_error or "",
+                }
+            )
+
+
+    # =====================================================
+    # Pairwise Aggregation
+    # =====================================================
+
+    valid_preferences = [
+        result[
+            "preference"
+        ]
+
+        for result
+        in results.values()
+
+        if result.get(
+            "preference"
+        ) is not None
+    ]
+
+
+    panel_complete = (
+        len(
+            valid_preferences
+        )
+        == len(
+            JUDGE_MODELS
+        )
+    )
+
+
+    agreement = (
+        panel_complete
+
+        and len(
+            set(
+                valid_preferences
+            )
+        )
+        == 1
+    )
+
+
+    if agreement:
+
+        consensus_preference = (
+            valid_preferences[
+                0
+            ]
+        )
+
+
+    else:
+
+        consensus_preference = (
+            None
+        )
+
+
+    return {
+        "results":
+            results,
+
+        "panel_complete":
+            panel_complete,
+
+        "agreement":
+            agreement,
+
+        "consensus_preference":
+            consensus_preference,
+    }
 
 
 # =========================================================
@@ -993,13 +2672,14 @@ def add_judge_scores_to_row(
 def save_results(
     batch_rows: list,
     judge_rows: list,
+    pairwise_rows: list,
 ):
     """
-    Save intermediate results after each
-    Candidate × Case experiment.
+    Save intermediate results after
+    every Candidate × Case experiment.
 
-    This prevents losing finished results if
-    a later API request fails.
+    This prevents losing finished work
+    if later API requests fail.
     """
 
     if batch_rows:
@@ -1024,6 +2704,17 @@ def save_results(
         )
 
 
+    if pairwise_rows:
+
+        pd.DataFrame(
+            pairwise_rows
+        ).to_csv(
+            PAIRWISE_RESULTS_FILE,
+            index=False,
+            encoding="utf-8-sig",
+        )
+
+
 # =========================================================
 # Candidate × Case Experiment
 # =========================================================
@@ -1033,21 +2724,39 @@ def run_candidate_case(
     case_index: int,
     candidate_model: str,
     judge_rows: list,
+    pairwise_rows: list,
 ) -> dict:
     """
-    Run one complete experiment:
+    Run one complete policy-grounded experiment.
 
-    Candidate generates V1
-            ↓
-    Step Judge + Qwen Judge
-            ↓
-    Cross-Judge Quality Gate
-            ↓
-    Candidate revises V2 if required
-            ↓
-    Step Judge + Qwen Judge
-            ↓
-    V1 vs V2 comparison
+    V1 Generation
+        ↓
+    Step + Qwen Review
+        ↓
+
+    CASE 1
+    Both Judges detect no blocking issue
+        ↓
+    No mandatory revision
+
+    CASE 2
+    Judges disagree
+        ↓
+    Human Review recommended
+        ↓
+    No automatic rewrite
+
+    CASE 3
+    Both Judges detect blocking issue(s)
+        ↓
+    Targeted Minimal Compliance Fix
+        ↓
+    V2 Step + Qwen Re-check
+        ↓
+    V1 vs V2 Pairwise Evaluation
+
+    Numerical scores remain descriptive only.
+    They never determine pass/fail.
     """
 
     case_id = get_case_id(
@@ -1077,6 +2786,13 @@ def run_candidate_case(
     ]
 
 
+    policy_context = (
+        get_policy_context(
+            case
+        )
+    )
+
+
     row = {
         "case_id":
             case_id,
@@ -1091,6 +2807,11 @@ def run_candidate_case(
             MODELS[
                 candidate_model
             ],
+
+        "policy_context_present":
+            bool(
+                policy_context
+            ),
 
         "status":
             "RUNNING",
@@ -1195,6 +2916,8 @@ def run_candidate_case(
 
         campaign_brief=campaign_brief,
 
+        policy_context=policy_context,
+
         content=v1_content,
 
         judge_rows=judge_rows,
@@ -1215,46 +2938,64 @@ def run_candidate_case(
     )
 
 
-    row[
-        "v1_valid_judge_count"
-    ] = v1_aggregate[
-        "valid_judge_count"
-    ]
+    row.update(
+        {
+            "v1_valid_judge_count":
+                v1_aggregate[
+                    "valid_judge_count"
+                ],
 
+            "v1_expected_judge_count":
+                v1_aggregate[
+                    "expected_judge_count"
+                ],
 
-    row[
-        "v1_expected_judge_count"
-    ] = v1_aggregate[
-        "expected_judge_count"
-    ]
+            "v1_judge_panel_complete":
+                v1_aggregate[
+                    "panel_complete"
+                ],
 
+            "v1_cross_judge_heuristic":
+                v1_aggregate[
+                    "avg_heuristic_score"
+                ],
 
-    row[
-        "v1_judge_panel_complete"
-    ] = v1_aggregate[
-        "panel_complete"
-    ]
+            "v1_cross_judge_claim_risk":
+                v1_aggregate[
+                    "avg_claim_risk"
+                ],
 
+            "v1_cross_judge_blocking_count":
+                v1_aggregate[
+                    "avg_blocking_count"
+                ],
 
-    row[
-        "v1_cross_judge_overall"
-    ] = v1_aggregate[
-        "avg_overall_score"
-    ]
+            "v1_judge_score_gap":
+                v1_aggregate[
+                    "judge_score_gap"
+                ],
 
+            "v1_any_blocking":
+                v1_aggregate[
+                    "any_blocking"
+                ],
 
-    row[
-        "v1_cross_judge_claim_risk"
-    ] = v1_aggregate[
-        "avg_claim_risk"
-    ]
+            "v1_all_blocking":
+                v1_aggregate[
+                    "all_blocking"
+                ],
 
+            "v1_blocking_agreement":
+                v1_aggregate[
+                    "blocking_agreement"
+                ],
 
-    row[
-        "v1_judge_score_gap"
-    ] = v1_aggregate[
-        "judge_score_gap"
-    ]
+            "v1_compliance_decision":
+                v1_aggregate[
+                    "compliance_decision"
+                ],
+        }
+    )
 
 
     # =====================================================
@@ -1273,13 +3014,19 @@ def run_candidate_case(
 
         print(
             "Experiment cannot continue "
-            "with a valid Cross-Judge score."
+            "with a valid Cross-Judge "
+            "compliance decision."
         )
 
 
         row[
-            "revision_triggered"
+            "compliance_fix_triggered"
         ] = None
+
+
+        row[
+            "human_review_recommended"
+        ] = True
 
 
         row[
@@ -1290,8 +3037,9 @@ def run_candidate_case(
         row[
             "error"
         ] = (
-            "One or more V1 Judges failed "
-            "after all retry attempts."
+            "One or more V1 Judges "
+            "failed after all "
+            "retry attempts."
         )
 
 
@@ -1299,162 +3047,242 @@ def run_candidate_case(
 
 
     # =====================================================
-    # Revision Gate
+    # Decision 1:
+    # Consensus No Blocking
     # =====================================================
 
-    revision_required = needs_revision(
-        v1_judges
-    )
-
-
-    row[
-        "revision_triggered"
-    ] = revision_required
-
-
-    # =====================================================
-    # No Revision Needed
-    # =====================================================
-
-    if not revision_required:
+    if (
+        v1_aggregate[
+            "compliance_decision"
+        ]
+        == "CONSENSUS_NO_BLOCKING"
+    ):
 
         print(
-            "\n✅ V1 passed "
-            "Cross-Judge Quality Gate."
+            "\n✅ Both Judges detected "
+            "no blocking compliance issue."
         )
 
 
-        row[
-            "v2_content"
-        ] = ""
+        print(
+            "Quality advisory findings, "
+            "if any, remain optional "
+            "for human review."
+        )
 
 
-        row[
-            "v2_revision_latency"
-        ] = None
+        row.update(
+            {
+                "compliance_fix_triggered":
+                    False,
 
+                "human_review_recommended":
+                    False,
 
-        row[
-            "v2_cross_judge_overall"
-        ] = None
+                "v2_content":
+                    "",
 
+                "v2_revision_latency":
+                    None,
 
-        row[
-            "v2_cross_judge_claim_risk"
-        ] = None
+                "v2_cross_judge_heuristic":
+                    None,
 
+                "v2_cross_judge_claim_risk":
+                    None,
 
-        row[
-            "v2_judge_score_gap"
-        ] = None
+                "v2_cross_judge_blocking_count":
+                    None,
 
+                "heuristic_score_change":
+                    None,
 
-        row[
-            "overall_improvement"
-        ] = 0
+                "claim_risk_reduction":
+                    None,
 
+                "blocking_removed":
+                    None,
 
-        row[
-            "claim_risk_reduction"
-        ] = 0
+                "pairwise_panel_complete":
+                    None,
 
+                "pairwise_agreement":
+                    None,
 
-        row[
-            "revision_success"
-        ] = None
+                "pairwise_consensus_preference":
+                    None,
 
-
-        row[
-            "status"
-        ] = "SUCCESS_NO_REVISION"
+                "status":
+                    "SUCCESS_NO_BLOCKING",
+            }
+        )
 
 
         return row
 
 
     # =====================================================
-    # Revision Triggered
+    # Decision 2:
+    # Judge Disagreement
+    # =====================================================
+
+    if (
+        v1_aggregate[
+            "compliance_decision"
+        ]
+        == "JUDGE_DISAGREEMENT"
+    ):
+
+        print(
+            "\n⚠️ Judges disagree on "
+            "blocking compliance status."
+        )
+
+
+        print(
+            "No automatic rewrite is run. "
+            "Human review is recommended."
+        )
+
+
+        row.update(
+            {
+                "compliance_fix_triggered":
+                    False,
+
+                "human_review_recommended":
+                    True,
+
+                "v2_content":
+                    "",
+
+                "v2_revision_latency":
+                    None,
+
+                "v2_cross_judge_heuristic":
+                    None,
+
+                "v2_cross_judge_claim_risk":
+                    None,
+
+                "v2_cross_judge_blocking_count":
+                    None,
+
+                "heuristic_score_change":
+                    None,
+
+                "claim_risk_reduction":
+                    None,
+
+                "blocking_removed":
+                    None,
+
+                "pairwise_panel_complete":
+                    None,
+
+                "pairwise_agreement":
+                    None,
+
+                "pairwise_consensus_preference":
+                    None,
+
+                "status":
+                    "SUCCESS_REVIEW_REQUIRED",
+            }
+        )
+
+
+        return row
+
+
+    # =====================================================
+    # Decision 3:
+    # Consensus Blocking
     # =====================================================
 
     print(
-        "\n⚠️ Revision triggered."
+        "\n⚠️ Both Judges detected "
+        "blocking compliance issue(s)."
     )
 
 
     print(
-        f"Revising with "
+        f"Running targeted Minimal "
+        f"Compliance Fix with "
         f"{candidate_model}..."
     )
 
 
+    row[
+        "compliance_fix_triggered"
+    ] = True
+
+
+    row[
+        "human_review_recommended"
+    ] = False
+
+
     # =====================================================
-    # Combine Feedback From Both Judges
+    # Combine + Deduplicate Policy-Grounded Findings
     # =====================================================
 
-    combined_issues = []
-
-    combined_suggestions = []
-
-
-    for judge_model in JUDGE_MODELS:
-
-        evaluation = (
+    combined_findings = (
+        combine_compliance_findings(
             v1_judges
-            .get(
-                judge_model,
-                {},
-            )
-            .get(
-                "evaluation"
-            )
+        )
+    )
+
+
+    row[
+        "combined_compliance_finding_count"
+    ] = len(
+        combined_findings
+    )
+
+
+    row[
+        "combined_compliance_findings"
+    ] = json.dumps(
+        combined_findings,
+        ensure_ascii=False,
+    )
+
+
+    print(
+        f"\nCombined unique compliance "
+        f"findings: "
+        f"{len(combined_findings)}"
+    )
+
+
+    for index, finding in enumerate(
+        combined_findings,
+        start=1,
+    ):
+
+        reporters = finding.get(
+            "reported_by",
+            [],
         )
 
 
-        if not evaluation:
-            continue
+        print(
+            f"  {index}. "
+            f"{finding.get('evidence', '')} "
+            f"| reported_by="
+            f"{reporters}"
+        )
 
 
-        for issue in evaluation.get(
-            "issues",
-            [],
-        ):
-
-            if (
-                issue
-                not in combined_issues
-            ):
-
-                combined_issues.append(
-                    issue
-                )
-
-
-        for suggestion in evaluation.get(
-            "suggestions",
-            [],
-        ):
-
-            if (
-                suggestion
-                not in combined_suggestions
-            ):
-
-                combined_suggestions.append(
-                    suggestion
-                )
-
-
-    combined_feedback = {
-        "issues":
-            combined_issues,
-
-        "suggestions":
-            combined_suggestions,
+    combined_evaluation = {
+        "compliance_findings":
+            combined_findings,
     }
 
 
     # =====================================================
-    # Generate V2
+    # Generate V2 Minimal Compliance Fix
     # =====================================================
 
     try:
@@ -1463,7 +3291,7 @@ def run_candidate_case(
             v2_content,
             revision_latency,
         ) = timed_call(
-            revise_content,
+            fix_compliance_issues,
 
             brand_info=brand_info,
 
@@ -1471,7 +3299,9 @@ def run_candidate_case(
 
             original_content=v1_content,
 
-            evaluation=combined_feedback,
+            evaluation=combined_evaluation,
+
+            policy_context=policy_context,
 
             model_key=candidate_model,
         )
@@ -1488,8 +3318,8 @@ def run_candidate_case(
 
 
         print(
-            f"✅ V2 generated "
-            f"in "
+            f"✅ V2 compliance fix "
+            f"generated in "
             f"{revision_latency:.2f}s"
         )
 
@@ -1497,14 +3327,16 @@ def run_candidate_case(
     except Exception as error:
 
         print(
-            f"❌ Revision failed: "
+            f"❌ Compliance fix failed: "
             f"{error}"
         )
 
 
         row[
             "status"
-        ] = "FAILED_REVISION"
+        ] = (
+            "FAILED_COMPLIANCE_FIX"
+        )
 
 
         row[
@@ -1540,6 +3372,8 @@ def run_candidate_case(
 
         campaign_brief=campaign_brief,
 
+        policy_context=policy_context,
+
         content=v2_content,
 
         judge_rows=judge_rows,
@@ -1560,46 +3394,64 @@ def run_candidate_case(
     )
 
 
-    row[
-        "v2_valid_judge_count"
-    ] = v2_aggregate[
-        "valid_judge_count"
-    ]
+    row.update(
+        {
+            "v2_valid_judge_count":
+                v2_aggregate[
+                    "valid_judge_count"
+                ],
 
+            "v2_expected_judge_count":
+                v2_aggregate[
+                    "expected_judge_count"
+                ],
 
-    row[
-        "v2_expected_judge_count"
-    ] = v2_aggregate[
-        "expected_judge_count"
-    ]
+            "v2_judge_panel_complete":
+                v2_aggregate[
+                    "panel_complete"
+                ],
 
+            "v2_cross_judge_heuristic":
+                v2_aggregate[
+                    "avg_heuristic_score"
+                ],
 
-    row[
-        "v2_judge_panel_complete"
-    ] = v2_aggregate[
-        "panel_complete"
-    ]
+            "v2_cross_judge_claim_risk":
+                v2_aggregate[
+                    "avg_claim_risk"
+                ],
 
+            "v2_cross_judge_blocking_count":
+                v2_aggregate[
+                    "avg_blocking_count"
+                ],
 
-    row[
-        "v2_cross_judge_overall"
-    ] = v2_aggregate[
-        "avg_overall_score"
-    ]
+            "v2_judge_score_gap":
+                v2_aggregate[
+                    "judge_score_gap"
+                ],
 
+            "v2_any_blocking":
+                v2_aggregate[
+                    "any_blocking"
+                ],
 
-    row[
-        "v2_cross_judge_claim_risk"
-    ] = v2_aggregate[
-        "avg_claim_risk"
-    ]
+            "v2_all_blocking":
+                v2_aggregate[
+                    "all_blocking"
+                ],
 
+            "v2_blocking_agreement":
+                v2_aggregate[
+                    "blocking_agreement"
+                ],
 
-    row[
-        "v2_judge_score_gap"
-    ] = v2_aggregate[
-        "judge_score_gap"
-    ]
+            "v2_compliance_decision":
+                v2_aggregate[
+                    "compliance_decision"
+                ],
+        }
+    )
 
 
     # =====================================================
@@ -1617,7 +3469,7 @@ def run_candidate_case(
 
 
         row[
-            "overall_improvement"
+            "heuristic_score_change"
         ] = None
 
 
@@ -1627,8 +3479,28 @@ def run_candidate_case(
 
 
         row[
-            "revision_success"
+            "blocking_removed"
         ] = None
+
+
+        row[
+            "pairwise_panel_complete"
+        ] = None
+
+
+        row[
+            "pairwise_agreement"
+        ] = None
+
+
+        row[
+            "pairwise_consensus_preference"
+        ] = None
+
+
+        row[
+            "human_review_recommended"
+        ] = True
 
 
         row[
@@ -1639,8 +3511,9 @@ def run_candidate_case(
         row[
             "error"
         ] = (
-            "One or more V2 Judges failed "
-            "after all retry attempts."
+            "One or more V2 Judges "
+            "failed after all "
+            "retry attempts."
         )
 
 
@@ -1648,64 +3521,189 @@ def run_candidate_case(
 
 
     # =====================================================
-    # V1 vs V2 Improvement
+    # Descriptive V1 → V2 Changes
     # =====================================================
 
-    overall_improvement = round(
-        v2_aggregate[
-            "avg_overall_score"
-        ]
-
-        - v1_aggregate[
-            "avg_overall_score"
-        ],
-
-        2,
-    )
-
-
-    claim_risk_reduction = round(
-        v1_aggregate[
-            "avg_claim_risk"
-        ]
-
-        - v2_aggregate[
-            "avg_claim_risk"
-        ],
-
-        2,
-    )
-
-
     row[
-        "overall_improvement"
-    ] = overall_improvement
+        "heuristic_score_change"
+    ] = round(
+        v2_aggregate[
+            "avg_heuristic_score"
+        ]
+        - v1_aggregate[
+            "avg_heuristic_score"
+        ],
+        2,
+    )
 
 
     row[
         "claim_risk_reduction"
-    ] = claim_risk_reduction
-
-
-    # =====================================================
-    # Revision Success
-    # =====================================================
-
-    revision_success = (
-        overall_improvement > 0
-
-        and claim_risk_reduction >= 0
+    ] = round(
+        v1_aggregate[
+            "avg_claim_risk"
+        ]
+        - v2_aggregate[
+            "avg_claim_risk"
+        ],
+        2,
     )
 
 
     row[
-        "revision_success"
-    ] = revision_success
+        "blocking_removed"
+    ] = (
+        v1_aggregate[
+            "all_blocking"
+        ]
+
+        and not v2_aggregate[
+            "any_blocking"
+        ]
+    )
+
+
+    # =====================================================
+    # Pairwise V1 vs V2
+    # =====================================================
+
+    print(
+        "\nRunning V1 vs V2 "
+        "pairwise comparison..."
+    )
+
+
+    pairwise = run_pairwise_judges(
+        case_id=case_id,
+
+        challenge=challenge,
+
+        candidate_model=candidate_model,
+
+        brand_info=brand_info,
+
+        campaign_brief=campaign_brief,
+
+        policy_context=policy_context,
+
+        v1_content=v1_content,
+
+        v2_content=v2_content,
+
+        pairwise_rows=pairwise_rows,
+    )
 
 
     row[
-        "status"
-    ] = "SUCCESS_REVISED"
+        "pairwise_panel_complete"
+    ] = pairwise[
+        "panel_complete"
+    ]
+
+
+    row[
+        "pairwise_agreement"
+    ] = pairwise[
+        "agreement"
+    ]
+
+
+    row[
+        "pairwise_consensus_preference"
+    ] = pairwise[
+        "consensus_preference"
+    ]
+
+
+    for judge_model in JUDGE_MODELS:
+
+        judge_pairwise = (
+            pairwise[
+                "results"
+            ].get(
+                judge_model,
+                {},
+            )
+        )
+
+
+        prefix = (
+            f"pairwise_"
+            f"{judge_model}_judge"
+        )
+
+
+        row[
+            f"{prefix}_preference"
+        ] = judge_pairwise.get(
+            "preference"
+        )
+
+
+        row[
+            f"{prefix}_latency"
+        ] = judge_pairwise.get(
+            "latency"
+        )
+
+
+        row[
+            f"{prefix}_attempts"
+        ] = judge_pairwise.get(
+            "attempts"
+        )
+
+
+        row[
+            f"{prefix}_error"
+        ] = (
+            judge_pairwise.get(
+                "error"
+            )
+            or ""
+        )
+
+
+    # =====================================================
+    # Final Routing
+    # =====================================================
+
+    if (
+        v2_aggregate[
+            "compliance_decision"
+        ]
+        == "CONSENSUS_NO_BLOCKING"
+    ):
+
+        row[
+            "human_review_recommended"
+        ] = False
+
+
+        row[
+            "status"
+        ] = (
+            "SUCCESS_COMPLIANCE_FIX_CLEARED"
+        )
+
+
+    else:
+
+        # If blocking findings remain
+        # OR Judges disagree after repair,
+        # route to Human Review.
+
+        row[
+            "human_review_recommended"
+        ] = True
+
+
+        row[
+            "status"
+        ] = (
+            "SUCCESS_COMPLIANCE_FIX_"
+            "REVIEW_REQUIRED"
+        )
 
 
     return row
@@ -1718,9 +3716,22 @@ def run_candidate_case(
 def print_summary(
     batch_df: pd.DataFrame,
     judge_df: pd.DataFrame,
+    pairwise_df: pd.DataFrame,
 ):
     """
-    Print Candidate and Cross-Judge summaries.
+    Print descriptive benchmark results.
+
+    IMPORTANT:
+
+    This small test suite is designed for:
+
+    - failure-mode coverage
+    - candidate comparison
+    - compliance behavior analysis
+    - Judge consistency analysis
+
+    It is NOT used to calibrate an absolute
+    acceptance threshold.
     """
 
     print(
@@ -1730,7 +3741,8 @@ def print_summary(
 
 
     print(
-        "GROWTHPILOT BENCHMARK SUMMARY"
+        "GROWTHPILOT POLICY-GROUNDED "
+        "BENCHMARK SUMMARY"
     )
 
 
@@ -1739,10 +3751,43 @@ def print_summary(
     )
 
 
+    print(
+        "\nInterpretation note:"
+    )
+
+
+    print(
+        "- Heuristic scores are "
+        "diagnostic signals only."
+    )
+
+
+    print(
+        "- No numerical pass/fail "
+        "threshold is used."
+    )
+
+
+    print(
+        "- Blocking findings must be "
+        "grounded in supplied "
+        "policy / facts."
+    )
+
+
+    print(
+        "- Judge disagreement routes "
+        "to human review, "
+        "not auto-rewrite."
+    )
+
+
     successful = batch_df[
         batch_df[
             "status"
-        ].str.startswith(
+        ].astype(
+            str
+        ).str.startswith(
             "SUCCESS",
             na=False,
         )
@@ -1763,7 +3808,7 @@ def print_summary(
     # =====================================================
 
     print(
-        "\nCANDIDATE MODEL SUMMARY"
+        "\n\nCANDIDATE MODEL SUMMARY"
     )
 
 
@@ -1783,6 +3828,7 @@ def print_summary(
 
 
         if candidate_rows.empty:
+
             continue
 
 
@@ -1798,74 +3844,345 @@ def print_summary(
         )
 
 
-        print(
-            "Average V1 Cross-Judge Score: "
-            f"{candidate_rows['v1_cross_judge_overall'].mean():.2f}"
-        )
-
-
-        print(
-            "Average V1 Claim Risk: "
-            f"{candidate_rows['v1_cross_judge_claim_risk'].mean():.2f}"
-        )
-
-
-        print(
-            "Average Generation Latency: "
-            f"{candidate_rows['v1_generation_latency'].mean():.2f}s"
-        )
-
-
-        print(
-            "Average Judge Disagreement Gap: "
-            f"{candidate_rows['v1_judge_score_gap'].mean():.2f}"
-        )
-
-
-        revision_rows = candidate_rows[
+        avg_v1_score = safe_numeric_mean(
             candidate_rows[
-                "revision_triggered"
-            ] == True
-        ]
-
-
-        print(
-            "Revision Trigger Rate: "
-            f"{len(revision_rows) / len(candidate_rows):.1%}"
+                "v1_cross_judge_heuristic"
+            ]
         )
 
 
-        if not revision_rows.empty:
+        avg_v1_risk = safe_numeric_mean(
+            candidate_rows[
+                "v1_cross_judge_claim_risk"
+            ]
+        )
 
-            valid_revision_rows = (
-                revision_rows[
-                    revision_rows[
-                        "overall_improvement"
-                    ].notna()
+
+        avg_generation_latency = (
+            safe_numeric_mean(
+                candidate_rows[
+                    "v1_generation_latency"
                 ]
+            )
+        )
+
+
+        avg_judge_gap = (
+            safe_numeric_mean(
+                candidate_rows[
+                    "v1_judge_score_gap"
+                ]
+            )
+        )
+
+
+        if avg_v1_score is not None:
+
+            print(
+                "Average V1 "
+                "Heuristic Score: "
+                f"{avg_v1_score:.2f}"
             )
 
 
-            if not valid_revision_rows.empty:
+        if avg_v1_risk is not None:
+
+            print(
+                "Average V1 "
+                "Claim Risk: "
+                f"{avg_v1_risk:.2f}"
+            )
+
+
+        if (
+            avg_generation_latency
+            is not None
+        ):
+
+            print(
+                "Average Generation "
+                "Latency: "
+                f"{avg_generation_latency:.2f}s"
+            )
+
+
+        if avg_judge_gap is not None:
+
+            print(
+                "Average Judge "
+                "Score Gap: "
+                f"{avg_judge_gap:.2f}"
+            )
+
+
+        total = len(
+            candidate_rows
+        )
+
+
+        consensus_blocking = (
+            candidate_rows[
+                candidate_rows[
+                    "v1_compliance_decision"
+                ]
+                == "CONSENSUS_BLOCKING"
+            ]
+        )
+
+
+        disagreement_rows = (
+            candidate_rows[
+                candidate_rows[
+                    "v1_compliance_decision"
+                ]
+                == "JUDGE_DISAGREEMENT"
+            ]
+        )
+
+
+        no_blocking_rows = (
+            candidate_rows[
+                candidate_rows[
+                    "v1_compliance_decision"
+                ]
+                == "CONSENSUS_NO_BLOCKING"
+            ]
+        )
+
+
+        print(
+            "Consensus Blocking Rate: "
+            f"{len(consensus_blocking) / total:.1%}"
+        )
+
+
+        print(
+            "Judge Disagreement Rate: "
+            f"{len(disagreement_rows) / total:.1%}"
+        )
+
+
+        print(
+            "Consensus No-Blocking Rate: "
+            f"{len(no_blocking_rows) / total:.1%}"
+        )
+
+
+        # =================================================
+        # Compliance Fix Analysis
+        # =================================================
+
+        fixed_rows = candidate_rows[
+            candidate_rows[
+                "status"
+            ].astype(
+                str
+            ).str.startswith(
+                "SUCCESS_COMPLIANCE_FIX",
+                na=False,
+            )
+        ]
+
+
+        if not fixed_rows.empty:
+
+            print(
+                f"Compliance Fix Runs: "
+                f"{len(fixed_rows)}"
+            )
+
+
+            avg_score_change = (
+                safe_numeric_mean(
+                    fixed_rows[
+                        "heuristic_score_change"
+                    ]
+                )
+            )
+
+
+            avg_risk_reduction = (
+                safe_numeric_mean(
+                    fixed_rows[
+                        "claim_risk_reduction"
+                    ]
+                )
+            )
+
+
+            blocking_removed_rate = (
+                fixed_rows[
+                    "blocking_removed"
+                ]
+                .fillna(
+                    False
+                )
+                .astype(
+                    bool
+                )
+                .mean()
+            )
+
+
+            if (
+                avg_score_change
+                is not None
+            ):
 
                 print(
-                    "Average Revision Improvement: "
-                    f"{valid_revision_rows['overall_improvement'].mean():.2f}"
+                    "Average Heuristic "
+                    "Score Change: "
+                    f"{avg_score_change:+.2f}"
+                )
+
+
+            if (
+                avg_risk_reduction
+                is not None
+            ):
+
+                print(
+                    "Average Claim "
+                    "Risk Reduction: "
+                    f"{avg_risk_reduction:+.2f}"
+                )
+
+
+            print(
+                "Blocking Findings "
+                "Fully Removed Rate: "
+                f"{blocking_removed_rate:.1%}"
+            )
+
+
+            # =============================================
+            # Pairwise Agreement
+            # =============================================
+
+            valid_pairwise = fixed_rows[
+                fixed_rows[
+                    "pairwise_panel_complete"
+                ]
+                == True
+            ]
+
+
+            if not valid_pairwise.empty:
+
+                pairwise_agreement_rate = (
+                    valid_pairwise[
+                        "pairwise_agreement"
+                    ]
+                    .fillna(
+                        False
+                    )
+                    .astype(
+                        bool
+                    )
+                    .mean()
                 )
 
 
                 print(
-                    "Average Claim Risk Reduction: "
-                    f"{valid_revision_rows['claim_risk_reduction'].mean():.2f}"
+                    "Pairwise Judge "
+                    "Agreement Rate: "
+                    f"{pairwise_agreement_rate:.1%}"
                 )
+
+
+                for preference in [
+                    "v2",
+                    "v1",
+                    "tie",
+                ]:
+
+                    count = len(
+                        valid_pairwise[
+                            valid_pairwise[
+                                "pairwise_consensus_preference"
+                            ]
+                            == preference
+                        ]
+                    )
+
+
+                    print(
+                        f"Pairwise Consensus "
+                        f"{preference.upper()}: "
+                        f"{count}"
+                    )
 
 
     # =====================================================
-    # Cross-Judge Analysis
+    # Cross-Judge Compliance Analysis
     # =====================================================
 
     print(
-        "\n\nCROSS-JUDGE ANALYSIS — V1"
+        "\n\nCROSS-JUDGE "
+        "COMPLIANCE ANALYSIS — V1"
+    )
+
+
+    print(
+        "-" * 80
+    )
+
+
+    complete_v1 = successful[
+        successful[
+            "v1_judge_panel_complete"
+        ]
+        == True
+    ]
+
+
+    if not complete_v1.empty:
+
+        agreement_rate = (
+            complete_v1[
+                "v1_blocking_agreement"
+            ]
+            .fillna(
+                False
+            )
+            .astype(
+                bool
+            )
+            .mean()
+        )
+
+
+        disagreement_count = len(
+            complete_v1[
+                complete_v1[
+                    "v1_compliance_decision"
+                ]
+                == "JUDGE_DISAGREEMENT"
+            ]
+        )
+
+
+        print(
+            "Blocking / No-Blocking "
+            "Agreement Rate: "
+            f"{agreement_rate:.1%}"
+        )
+
+
+        print(
+            f"Judge Disagreement Cases: "
+            f"{disagreement_count}/"
+            f"{len(complete_v1)}"
+        )
+
+
+    # =====================================================
+    # Cross-Judge Diagnostic Analysis
+    # =====================================================
+
+    print(
+        "\n\nCROSS-JUDGE "
+        "DIAGNOSTIC ANALYSIS — V1"
     )
 
 
@@ -1878,13 +4195,15 @@ def print_summary(
         (
             judge_df[
                 "version"
-            ] == "v1"
+            ]
+            == "v1"
         )
 
         & (
             judge_df[
                 "status"
-            ] == "SUCCESS"
+            ]
+            == "SUCCESS"
         )
     ]
 
@@ -1900,6 +4219,7 @@ def print_summary(
 
 
         if judge_data.empty:
+
             continue
 
 
@@ -1911,25 +4231,135 @@ def print_summary(
 
         for candidate_model in CANDIDATE_MODELS:
 
-            scores = judge_data[
+            candidate_data = judge_data[
                 judge_data[
                     "candidate_model"
                 ]
                 == candidate_model
-            ][
-                "overall_score"
             ]
 
 
-            if scores.empty:
+            if candidate_data.empty:
+
+                continue
+
+
+            score_mean = safe_numeric_mean(
+                candidate_data[
+                    "heuristic_composite_score"
+                ]
+            )
+
+
+            blocking_rate = (
+                candidate_data[
+                    "blocking_flag"
+                ]
+                .fillna(
+                    False
+                )
+                .astype(
+                    bool
+                )
+                .mean()
+            )
+
+
+            if score_mean is not None:
+
+                print(
+                    f"  Candidate "
+                    f"{candidate_model}: "
+                    f"heuristic="
+                    f"{score_mean:.2f}, "
+                    f"blocking_rate="
+                    f"{blocking_rate:.1%}"
+                )
+
+
+    # =====================================================
+    # Pairwise Analysis
+    # =====================================================
+
+    print(
+        "\n\nPAIRWISE "
+        "V1 VS V2 ANALYSIS"
+    )
+
+
+    print(
+        "-" * 80
+    )
+
+
+    if pairwise_df.empty:
+
+        print(
+            "\nNo pairwise comparisons "
+            "were run."
+        )
+
+
+    else:
+
+        successful_pairwise = pairwise_df[
+            pairwise_df[
+                "status"
+            ]
+            == "SUCCESS"
+        ]
+
+
+        for judge_model in JUDGE_MODELS:
+
+            judge_pairwise = (
+                successful_pairwise[
+                    successful_pairwise[
+                        "judge_model"
+                    ]
+                    == judge_model
+                ]
+            )
+
+
+            if judge_pairwise.empty:
+
                 continue
 
 
             print(
-                f"  Candidate "
-                f"{candidate_model}: "
-                f"{scores.mean():.2f}"
+                f"\nJudge: "
+                f"{judge_model}"
             )
+
+
+            total = len(
+                judge_pairwise
+            )
+
+
+            for preference in [
+                "v2",
+                "v1",
+                "tie",
+            ]:
+
+                count = len(
+                    judge_pairwise[
+                        judge_pairwise[
+                            "normalized_preference"
+                        ]
+                        == preference
+                    ]
+                )
+
+
+                print(
+                    f"  {preference}: "
+                    f"{count}/"
+                    f"{total} "
+                    f"({count / total:.1%})"
+                )
 
 
     # =====================================================
@@ -1937,7 +4367,8 @@ def print_summary(
     # =====================================================
 
     print(
-        "\n\nOBSERVED OWN-MODEL SCORE ADVANTAGE"
+        "\n\nOBSERVED "
+        "OWN-MODEL SCORE ADVANTAGE"
     )
 
 
@@ -1947,8 +4378,9 @@ def print_summary(
 
 
     print(
-        "This is an exploratory signal only. "
-        "It does NOT prove self-preference bias."
+        "Exploratory descriptive "
+        "signal only; this does NOT "
+        "prove self-preference bias."
     )
 
 
@@ -1962,14 +4394,17 @@ def print_summary(
         ]
 
 
-        own_scores = judge_data[
+        own_scores = pd.to_numeric(
             judge_data[
-                "candidate_model"
-            ]
-            == judge_model
-        ][
-            "overall_score"
-        ]
+                judge_data[
+                    "candidate_model"
+                ]
+                == judge_model
+            ][
+                "heuristic_composite_score"
+            ],
+            errors="coerce",
+        ).dropna()
 
 
         other_candidates = [
@@ -1982,15 +4417,18 @@ def print_summary(
         ]
 
 
-        other_scores = judge_data[
+        other_scores = pd.to_numeric(
             judge_data[
-                "candidate_model"
-            ].isin(
-                other_candidates
-            )
-        ][
-            "overall_score"
-        ]
+                judge_data[
+                    "candidate_model"
+                ].isin(
+                    other_candidates
+                )
+            ][
+                "heuristic_composite_score"
+            ],
+            errors="coerce",
+        ).dropna()
 
 
         if (
@@ -2043,7 +4481,8 @@ if __name__ == "__main__":
 
 
     print(
-        "GrowthPilot Cross-Judge Benchmark"
+        "GrowthPilot Policy-Grounded "
+        "Cross-Judge Benchmark"
     )
 
 
@@ -2076,8 +4515,42 @@ if __name__ == "__main__":
     )
 
 
+    print(
+        "Numerical Quality Threshold: "
+        "None"
+    )
+
+
+    print(
+        "Compliance Auto-Fix Rule: "
+        "both Judges must detect "
+        "blocking issues"
+    )
+
+
+    print(
+        "Judge Disagreement Rule: "
+        "route to human review; "
+        "no auto-fix"
+    )
+
+
+    print(
+        "Pairwise A/B Order Balancing: "
+        f"{BALANCE_PAIRWISE_ORDER}"
+    )
+
+
+    print(
+        "Cross-Judge Finding Deduplication: "
+        "evidence similarity + merged rationale"
+    )
+
+
     total_candidate_runs = (
-        len(cases)
+        len(
+            cases
+        )
         * len(
             CANDIDATE_MODELS
         )
@@ -2093,6 +4566,8 @@ if __name__ == "__main__":
     batch_rows = []
 
     judge_rows = []
+
+    pairwise_rows = []
 
 
     run_number = 0
@@ -2169,6 +4644,10 @@ if __name__ == "__main__":
                     judge_rows=(
                         judge_rows
                     ),
+
+                    pairwise_rows=(
+                        pairwise_rows
+                    ),
                 )
 
 
@@ -2217,11 +4696,13 @@ if __name__ == "__main__":
             save_results(
                 batch_rows,
                 judge_rows,
+                pairwise_rows,
             )
 
 
             print(
-                "\n💾 Intermediate results saved."
+                "\n💾 Intermediate "
+                "results saved."
             )
 
 
@@ -2232,6 +4713,7 @@ if __name__ == "__main__":
     save_results(
         batch_rows,
         judge_rows,
+        pairwise_rows,
     )
 
 
@@ -2245,6 +4727,11 @@ if __name__ == "__main__":
     )
 
 
+    pairwise_df = pd.DataFrame(
+        pairwise_rows
+    )
+
+
     # =====================================================
     # Summary
     # =====================================================
@@ -2252,6 +4739,7 @@ if __name__ == "__main__":
     print_summary(
         batch_df,
         judge_df,
+        pairwise_df,
     )
 
 
@@ -2275,6 +4763,12 @@ if __name__ == "__main__":
     print(
         f"\nJudge-level results:\n"
         f"{JUDGE_RESULTS_FILE}"
+    )
+
+
+    print(
+        f"\nPairwise results:\n"
+        f"{PAIRWISE_RESULTS_FILE}"
     )
 
 
