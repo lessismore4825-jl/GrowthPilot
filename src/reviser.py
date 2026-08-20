@@ -2,16 +2,13 @@ from src.llm_client import generate_text
 
 
 # =========================================================
-# Helper: Format Compliance Findings
+# Helpers
 # =========================================================
 
 def format_compliance_findings(
     findings: list,
 ) -> str:
-    """
-    Convert structured compliance findings
-    into a readable prompt section.
-    """
+    """Render structured blocking compliance findings for edit prompts."""
 
     if not findings:
         return "No blocking compliance findings."
@@ -43,22 +40,51 @@ Required action:
 """.strip()
         )
 
-    return "\n\n".join(
-        sections
-    )
+    return "\n\n".join(sections)
 
 
-# =========================================================
-# Helper: Format Advisory Findings
-# =========================================================
+def format_requirement_findings(
+    findings: list,
+) -> str:
+    """Render structured mandatory campaign requirement findings."""
+
+    if not findings:
+        return "No mandatory requirement findings."
+
+    sections = []
+
+    for index, finding in enumerate(
+        findings,
+        start=1,
+    ):
+        sections.append(
+            f"""
+REQUIREMENT {index}
+
+Requirement ID:
+{finding.get("requirement_id", "")}
+
+Missing mandatory content:
+{finding.get("requirement", "")}
+
+Match mode:
+{finding.get("match_mode", "")}
+
+Reason:
+{finding.get("reason", "")}
+
+Required action:
+{finding.get("required_action", "")}
+""".strip()
+        )
+
+    return "\n\n".join(sections)
+
 
 def format_advisory_findings(
     findings: list,
 ) -> str:
-    """
-    Convert non-blocking advisory findings
-    into a readable prompt section.
-    """
+    """Render non-blocking advisory findings and their provenance."""
 
     if not findings:
         return "No advisory findings."
@@ -84,12 +110,69 @@ Reason:
 
 Suggestion:
 {finding.get("suggestion", "")}
+
+Basis type:
+{finding.get("basis_type", "GENERAL_HEURISTIC")}
+
+Basis source:
+{finding.get("basis_source", "")}
+
+Basis quote:
+{finding.get("basis_quote", "")}
 """.strip()
         )
 
-    return "\n\n".join(
-        sections
-    )
+    return "\n\n".join(sections)
+
+
+def _policy_context_display(
+    policy_context: str,
+) -> str:
+    """Return stable display text for optional policy context."""
+
+    value = (
+        policy_context
+        or ""
+    ).strip()
+
+    if value:
+        return value
+
+    return "No additional external policy was provided."
+
+
+def _content_origin_instruction(
+    evaluation: dict,
+) -> str:
+    """Return revision rules appropriate to the submitted content origin."""
+
+    content_origin = str(
+        evaluation.get(
+            "content_origin",
+            "generated",
+        )
+        or "generated"
+    ).strip().lower()
+
+    if content_origin == "creator_draft":
+        return """
+The original content is CREATOR-SUBMITTED CONTENT.
+
+Preserve existing first-person creator voice and personal-experience wording
+when it is not itself one of the confirmed mandatory problems.
+
+Do NOT assume a creator's existing first-person statement is fabricated merely
+because Brand Information does not independently prove that personal experience.
+
+However, do not create NEW creator traits, experiences, endorsements or outcomes.
+""".strip()
+
+    return """
+The original content may be AI-generated.
+
+Do not invent new first-person experiences, endorsements, user outcomes or
+personal traits during revision.
+""".strip()
 
 
 # =========================================================
@@ -107,66 +190,51 @@ def fix_compliance_issues(
     """
     Perform a Minimal Compliance Edit.
 
-    Core principle:
-
-    Fix the identified blocking compliance issues
-    using the smallest necessary change.
-
-    Do NOT turn compliance revision into a general
-    copywriting rewrite.
+    Only confirmed blocking compliance findings are mandatory here.
+    Requirement completion and optional quality optimization remain separate.
     """
 
-    findings = evaluation.get(
-        "compliance_findings",
-        [],
+    findings = (
+        evaluation.get(
+            "compliance_findings",
+            [],
+        )
+        or []
     )
-
-
-    # =====================================================
-    # Nothing to Fix
-    # =====================================================
 
     if not findings:
-
         return original_content
 
-
-    findings_text = (
-        format_compliance_findings(
-            findings
-        )
+    findings_text = format_compliance_findings(
+        findings
     )
 
-
-    policy_context = (
+    policy_display = _policy_context_display(
         policy_context
-        or ""
-    ).strip()
-
-
-    policy_context_display = (
-        policy_context
-        if policy_context
-        else
-        "No additional external policy was provided."
     )
 
+    origin_instruction = _content_origin_instruction(
+        evaluation
+    )
 
     prompt = f"""
-You are a strict marketing compliance editor.
-
-Your task is NOT to rewrite or improve the marketing copy.
+You are a strict and conservative marketing compliance editor.
 
 Your task is ONLY to perform a:
 
 MINIMAL COMPLIANCE EDIT
 
-This means:
+Fix every confirmed Blocking Compliance Finding using the smallest necessary
+textual change.
 
-Fix every identified blocking compliance problem
-using the smallest necessary textual change.
+Do NOT treat this as a general rewrite.
 
-Preserve everything else whenever reasonably possible.
+
+============================================================
+CONTENT ORIGIN
+============================================================
+
+{origin_instruction}
 
 
 ============================================================
@@ -187,7 +255,7 @@ CAMPAIGN BRIEF
 ADDITIONAL POLICY CONTEXT
 ============================================================
 
-{policy_context_display}
+{policy_display}
 
 
 ============================================================
@@ -208,59 +276,69 @@ BLOCKING COMPLIANCE FINDINGS
 PRIMARY OBJECTIVE
 ============================================================
 
-Correct ONLY the identified compliance problems.
+Correct ONLY the confirmed blocking compliance problems.
 
-Do NOT treat this task as:
+Do NOT use this task for:
 
 - creative rewriting
 - style optimization
 - platform optimization
 - selling-point enrichment
-- copy expansion
 - engagement optimization
+- copy expansion
+- optional advisory fixes
+- unrelated campaign requirement completion
+
+
+============================================================
+SOURCE-OF-TRUTH RULE
+============================================================
+
+The confirmed Evidence and Policy Basis are the source of truth.
+
+A Judge's free-form REQUIRED_ACTION is guidance only.
+
+If any part of REQUIRED_ACTION would require an unsupported new claim,
+new creator experience, new product benefit or stronger promise:
+
+IGNORE that unsafe part.
+
+Use the smallest correction supported by the supplied sources instead.
 
 
 ============================================================
 MINIMAL EDIT RULES
 ============================================================
 
-RULE 1 — MINIMIZE CHANGES
+1. MINIMIZE CHANGES
 
-Make the smallest possible change needed
-to remove each blocking compliance problem.
+Change or remove only the wording necessary to resolve each confirmed
+blocking conflict.
 
-If one phrase is wrong,
-change or remove that phrase.
+Do not rewrite an entire sentence when a smaller edit is sufficient.
 
-Do not rewrite an entire sentence
-when a smaller edit is sufficient.
-
-Do not rewrite the entire content
-unless the identified violations are so extensive
-that a small edit cannot produce coherent content.
+Do not rewrite the whole piece unless the confirmed violations are so extensive
+that a smaller edit cannot produce coherent content.
 
 
-RULE 2 — PRESERVE CORRECT CONTENT
+2. PRESERVE CORRECT CONTENT
 
-Preserve:
+Preserve whenever possible:
 
-- correct facts
-- existing sentence structure
-- existing platform style
-- existing tone
-- existing selling points
-- existing wording
+- correct product facts
+- correct campaign content
+- sentence structure
+- creator voice
+- first-person perspective already present
+- platform style
+- tone
+- correct selling points
+- unaffected wording
 
-whenever they are not responsible
-for the blocking compliance problem.
 
+3. DO NOT ADD NEW MARKETING CLAIMS
 
-RULE 3 — DO NOT ADD NEW MARKETING CLAIMS
-
-Do NOT add any new claim merely to make
-the revised content sound better.
-
-Do NOT introduce new:
+Do NOT add new:
 
 - product benefits
 - product functions
@@ -269,62 +347,46 @@ Do NOT introduce new:
 - emotional outcomes
 - user outcomes
 - lifestyle outcomes
-- product positioning
 - technical properties
 - safety claims
 - health claims
 - medical claims
 - superiority claims
-- market leadership claims
+- market-leadership claims
 
 
-RULE 4 — NO UNSUPPORTED ENRICHMENT
+4. NO UNSUPPORTED INFERENCE
 
-Do NOT infer one property from another.
+Do not infer one property from another.
 
 Examples:
 
-"lightweight"
-does NOT automatically mean
-"fast absorbing".
+"lightweight" does not automatically mean "fast absorbing".
 
-"non-greasy"
-does NOT automatically mean
-"non-sticky".
+"non-greasy" does not automatically mean "non-sticky".
 
-"designed for dry and sensitive skin"
-does NOT automatically mean
-"clinically suitable for sensitive skin".
+"10,000mAh" does not automatically mean "battery lasts all day".
 
-"up to 24 hours hydration"
-does NOT mean
-"your skin will stay hydrated all day".
-
-Do not add such inferred statements
-unless they are explicitly supported.
+"up to 24 hours hydration" does not mean "guaranteed hydration all day".
 
 
-RULE 5 — NO INVENTED EXPERIENCE
+5. CREATOR EXPERIENCE SAFETY
 
-Do NOT invent first-person or user experiences.
+Preserve existing creator first-person wording when it is not the confirmed
+problem.
 
-Forbidden examples include:
+Do NOT invent NEW wording such as:
 
-"I tried it..."
+- "I tried it..."
+- "After using it..."
+- "My skin became..."
+- "It solved my..."
 
-"After using it..."
-
-"My skin became..."
-
-"It solved my..."
-
-"One application made..."
-
-unless that exact experience is explicitly
-provided as approved source material.
+unless that experience already exists in the submitted content or is explicitly
+supplied as approved source material.
 
 
-RULE 6 — NO INVENTED EVIDENCE
+6. NO INVENTED EVIDENCE
 
 Never invent:
 
@@ -342,181 +404,93 @@ Never invent:
 - testing results
 
 
-RULE 7 — PRESERVE FACTUAL QUALIFIERS
+7. PRESERVE FACTUAL QUALIFIERS
 
-Preserve uncertainty and qualification exactly.
+Preserve qualifiers such as:
 
-For example:
+- up to
+- approximately
+- may
+- designed for
 
-"up to 24 hours"
-must remain qualified.
+Do not strengthen them.
 
-Acceptable:
-"up to 24 hours"
-"最长可达24小时"
+Example:
 
-Not acceptable:
-"24 hours guaranteed"
-"一整天都保持水润"
-"全天持续保湿无压力"
+"up to 24 hours" must not become "24 hours guaranteed".
 
 
-"approximately"
-must not become an exact guarantee.
+8. DO NOT STRENGTHEN CLAIMS
+
+Prefer deletion or direct correction using an explicitly supplied fact.
+
+Do not replace a false claim with a stronger promotional claim.
 
 
-"may"
-must not become
-"will".
+9. BRAND AND POLICY PRIORITY
+
+If Campaign Brief conflicts with Brand Information or supplied policy context,
+the safer explicit rule takes priority.
 
 
-"designed for"
-must not become
-"clinically proven for".
+10. DO NOT FIX ADVISORIES HERE
+
+Do not proactively fix optional tone, platform, creativity, wording or engagement
+Advisories.
 
 
-RULE 8 — DO NOT STRENGTHEN CLAIMS
+11. DO NOT COMPLETE UNRELATED REQUIREMENTS HERE
 
-Never replace a factual statement
-with a stronger marketing statement.
+Requirement Findings have a separate mandatory action.
 
-Examples:
-
-Do NOT change:
-
-"contains hyaluronic acid"
-
-into:
-
-"deeply locks moisture into the skin"
-
-
-Do NOT change:
-
-"lightweight texture"
-
-into:
-
-"instantly absorbs into the skin"
-
-
-Do NOT change:
-
-"designed for dry and sensitive skin"
-
-into:
-
-"repairs sensitive skin problems"
-
-
-RULE 9 — BRAND AND POLICY RULES HAVE PRIORITY
-
-If the Campaign Brief conflicts with:
-
-- Brand Information
-- explicit brand restrictions
-- Additional Policy Context
-
-the compliance-safe interpretation has priority.
-
-
-RULE 10 — DO NOT FIX ADVISORY ISSUES
-
-This task is ONLY for blocking compliance findings.
-
-Do NOT proactively fix:
-
-- platform style
-- tone preferences
-- creativity
-- length preferences
-- selling-point coverage
-- engagement
-- wording elegance
-
-unless changing one of them is strictly necessary
-to correct a blocking compliance issue.
+Only make a requirement-related change here if it is strictly necessary to keep
+the compliance correction coherent.
 
 
 ============================================================
 WHEN DELETION IS ENOUGH
 ============================================================
 
-If removing the problematic wording produces
-a coherent and usable sentence:
+If deleting the problematic phrase produces coherent usable content:
 
-REMOVE IT.
+DELETE IT.
 
-Do not replace it with a new promotional claim
-just to maintain the same length.
+Do not replace it with a new promotional claim merely to preserve length.
 
 
 ============================================================
 WHEN REPLACEMENT IS NECESSARY
 ============================================================
 
-If a false statement can be corrected using
-an explicit supplied fact:
-
-replace it directly with that supplied fact.
+If a false statement can be corrected directly using an explicit supplied fact,
+replace it with that fact and nothing stronger.
 
 Example:
 
 Original:
 "72 hours of hydration"
 
-Brand Information:
+Supplied fact:
 "up to 24 hours of hydration"
 
 Preferred correction:
 "up to 24 hours of hydration"
-
-Do NOT expand it into additional claims.
-
-
-============================================================
-WHEN THE ORIGINAL IS MOSTLY INVALID
-============================================================
-
-If the blocking violations cover so much of
-the original content that simple deletion would make
-the content unusable:
-
-create the smallest coherent replacement possible.
-
-In that situation:
-
-1. Use ONLY explicit facts from Brand Information.
-2. Follow only necessary Campaign Brief requirements.
-3. Add no unsupported benefits.
-4. Add no inferred product characteristics.
-5. Add no invented user experiences.
-6. Add no unnecessary creative language.
-7. Keep the replacement concise.
 
 
 ============================================================
 FINAL SELF-CHECK
 ============================================================
 
-Before returning the revision, silently verify:
+Before returning, silently verify:
 
-1. Every blocking finding has been addressed.
-
-2. No new factual claim was introduced
-   unless directly supported by the supplied information.
-
-3. No new personal experience was invented.
-
-4. No new performance or sensory property was inferred.
-
+1. Every confirmed Blocking Finding has been addressed.
+2. No unsupported factual claim was added.
+3. No new creator/user experience was invented.
+4. No unsupported property was inferred.
 5. No factual qualifier was strengthened.
-
-6. Correct parts of the original were preserved
-   whenever possible.
-
-7. The revision changed only what was necessary
-   for compliance.
+6. Correct original content was preserved wherever possible.
+7. Optional Advisory issues were not opportunistically rewritten.
+8. Changes were minimal.
 
 
 ============================================================
@@ -525,32 +499,24 @@ OUTPUT FORMAT
 
 Return ONLY the revised marketing content.
 
-Do NOT explain what you changed.
-
-Do NOT provide bullet points describing edits.
-
+Do NOT explain changes.
 Do NOT provide reasoning.
-
+Do NOT provide edit notes.
 Do NOT use Markdown fences.
 """
-
 
     return generate_text(
         prompt=prompt,
         model_key=model_key,
-
-        # Compliance editing should be as
-        # deterministic and conservative
-        # as possible.
         temperature=0.0,
     )
 
 
 # =========================================================
-# Optional Quality Optimization
+# Minimal Requirement Completion
 # =========================================================
 
-def optimize_quality(
+def complete_requirements(
     brand_info: str,
     campaign_brief: str,
     original_content: str,
@@ -559,57 +525,55 @@ def optimize_quality(
     model_key: str | None = None,
 ) -> str:
     """
-    Optional quality optimization.
+    Perform Minimal Requirement Completion.
 
-    Unlike compliance repair, this action
-    is not mandatory.
-
-    It is triggered only when a human chooses
-    to act on advisory findings.
+    Missing mandatory Campaign Requirements are mandatory product actions,
+    but they are not labeled as Compliance violations.
     """
 
-    advisory_findings = evaluation.get(
-        "advisory_findings",
-        [],
+    findings = (
+        evaluation.get(
+            "requirement_findings",
+            [],
+        )
+        or []
     )
 
-
-    if not advisory_findings:
-
+    if not findings:
         return original_content
 
-
-    advisory_text = (
-        format_advisory_findings(
-            advisory_findings
-        )
+    findings_text = format_requirement_findings(
+        findings
     )
 
-
-    policy_context = (
+    policy_display = _policy_context_display(
         policy_context
-        or ""
-    ).strip()
-
-
-    policy_context_display = (
-        policy_context
-        if policy_context
-        else
-        "No additional external policy was provided."
     )
 
+    origin_instruction = _content_origin_instruction(
+        evaluation
+    )
 
     prompt = f"""
-You are a careful marketing content editor.
+You are a conservative Campaign Content Editor.
 
-This task is an OPTIONAL QUALITY OPTIMIZATION.
+Your task is ONLY to perform:
 
-Improve the content based on the supplied
-non-blocking advisory findings.
+MINIMAL REQUIREMENT COMPLETION
 
-Unlike compliance repair,
-these are suggestions rather than mandatory violations.
+The content is already written.
+
+Add every confirmed missing mandatory Campaign Requirement using the smallest
+necessary change.
+
+Do NOT turn this into a general rewrite.
+
+
+============================================================
+CONTENT ORIGIN
+============================================================
+
+{origin_instruction}
 
 
 ============================================================
@@ -630,7 +594,534 @@ CAMPAIGN BRIEF
 ADDITIONAL POLICY CONTEXT
 ============================================================
 
-{policy_context_display}
+{policy_display}
+
+
+============================================================
+ORIGINAL CONTENT
+============================================================
+
+{original_content}
+
+
+============================================================
+CONFIRMED MISSING MANDATORY REQUIREMENTS
+============================================================
+
+{findings_text}
+
+
+============================================================
+PRIMARY OBJECTIVE
+============================================================
+
+Complete ONLY the confirmed missing mandatory Campaign Requirements.
+
+This task is NOT:
+
+- a general rewrite
+- a compliance rewrite
+- creative enrichment
+- style optimization
+- engagement optimization
+- optional advisory optimization
+- selling-point expansion beyond the confirmed requirement
+
+
+============================================================
+REQUIREMENT ACTION SAFETY
+============================================================
+
+Requirement REQUIRED_ACTION is generated deterministically from the structured
+Requirement and may be followed as the mandatory editing instruction.
+
+Do not add any extra benefit, guarantee, outcome or interpretation beyond the
+required content itself.
+
+Example:
+
+Requirement:
+"BPA-free"
+
+Safe addition:
+"BPA-free"
+
+Unsafe addition:
+"BPA-free so it is completely safe for all daily use"
+
+Do NOT add the unsupported safety conclusion.
+
+
+============================================================
+MINIMAL REQUIREMENT RULES
+============================================================
+
+1. ADD EVERY CONFIRMED REQUIREMENT
+
+Complete each confirmed Requirement Finding.
+
+
+2. MINIMIZE CHANGES
+
+Prefer the smallest natural insertion into existing content.
+
+Do not rewrite the whole piece unless necessary for coherence.
+
+
+3. PRESERVE CREATOR VOICE
+
+Preserve whenever possible:
+
+- creator tone
+- first-person perspective
+- sentence structure
+- platform style
+- existing wording
+- correct product facts
+- correct selling points
+
+
+4. NO GENERAL OPTIMIZATION
+
+Do not proactively improve:
+
+- hook
+- creativity
+- hashtags
+- emojis
+- engagement
+- overall style
+- unrelated length issues
+
+unless strictly necessary to insert the required content coherently.
+
+
+5. DO NOT INVENT FACTS
+
+Never add unsupported:
+
+- product functions
+- product benefits
+- ingredients
+- specifications
+- prices
+- certifications
+- studies
+- statistics
+- guarantees
+- performance outcomes
+- medical outcomes
+- health outcomes
+
+
+6. CREATOR EXPERIENCE SAFETY
+
+Do not invent a new creator:
+
+- personal trait
+- skin type
+- lifestyle fact
+- personal experience
+- personal result
+- endorsement history
+
+Existing first-person content may be preserved.
+
+
+7. EXACT REQUIREMENTS
+
+If MATCH_MODE=EXACT:
+
+include the required content exactly.
+
+Typical examples:
+
+- campaign hashtag
+- mandatory disclosure
+- required slogan
+- specified product name
+
+
+8. SEMANTIC REQUIREMENTS
+
+If MATCH_MODE=SEMANTIC:
+
+express the required concept naturally.
+
+Exact wording is not required.
+
+Do not keyword-stuff when equivalent meaning can be expressed naturally.
+
+
+9. PRESERVE QUALIFIERS
+
+Never strengthen supplied facts.
+
+Example:
+
+"up to 18 hours" must not become "18 hours guaranteed".
+
+
+10. DO NOT FIX ADVISORIES
+
+Do not act on optional Advisory Findings during Requirement Completion.
+
+
+============================================================
+FINAL SELF-CHECK
+============================================================
+
+Before returning, silently verify:
+
+1. Every confirmed Requirement is now present.
+2. No unrelated claim was added.
+3. No unsupported benefit was attached to the Requirement.
+4. No new creator experience or trait was invented.
+5. Existing creator voice was preserved.
+6. No optional Advisory optimization occurred.
+7. Changes were minimal.
+
+
+============================================================
+OUTPUT FORMAT
+============================================================
+
+Return ONLY the completed marketing content.
+
+Do NOT explain changes.
+Do NOT provide reasoning.
+Do NOT provide edit notes.
+Do NOT use Markdown fences.
+"""
+
+    return generate_text(
+        prompt=prompt,
+        model_key=model_key,
+        temperature=0.0,
+    )
+
+
+# =========================================================
+# Combined Mandatory Fix
+# =========================================================
+
+def fix_mandatory_issues(
+    brand_info: str,
+    campaign_brief: str,
+    original_content: str,
+    evaluation: dict,
+    policy_context: str = "",
+    model_key: str | None = None,
+) -> str:
+    """
+    Resolve confirmed Compliance + Requirement findings in one conservative pass.
+
+    This avoids two sequential LLM rewrites when both mandatory issue types exist.
+    """
+
+    compliance_findings = (
+        evaluation.get(
+            "compliance_findings",
+            [],
+        )
+        or []
+    )
+
+    requirement_findings = (
+        evaluation.get(
+            "requirement_findings",
+            [],
+        )
+        or []
+    )
+
+    if (
+        not compliance_findings
+        and not requirement_findings
+    ):
+        return original_content
+
+    if (
+        compliance_findings
+        and not requirement_findings
+    ):
+        return fix_compliance_issues(
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            original_content=original_content,
+            evaluation=evaluation,
+            policy_context=policy_context,
+            model_key=model_key,
+        )
+
+    if (
+        requirement_findings
+        and not compliance_findings
+    ):
+        return complete_requirements(
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            original_content=original_content,
+            evaluation=evaluation,
+            policy_context=policy_context,
+            model_key=model_key,
+        )
+
+    compliance_text = format_compliance_findings(
+        compliance_findings
+    )
+
+    requirement_text = format_requirement_findings(
+        requirement_findings
+    )
+
+    policy_display = _policy_context_display(
+        policy_context
+    )
+
+    origin_instruction = _content_origin_instruction(
+        evaluation
+    )
+
+    prompt = f"""
+You are a strict and conservative Marketing Content Editor.
+
+Perform ONE:
+
+MINIMAL MANDATORY EDIT
+
+The edit must do BOTH:
+
+A. Correct every confirmed Blocking Compliance Finding.
+B. Complete every confirmed missing Mandatory Campaign Requirement.
+
+Do NOT use this task for optional quality optimization.
+
+
+============================================================
+CONTENT ORIGIN
+============================================================
+
+{origin_instruction}
+
+
+============================================================
+BRAND INFORMATION
+============================================================
+
+{brand_info}
+
+
+============================================================
+CAMPAIGN BRIEF
+============================================================
+
+{campaign_brief}
+
+
+============================================================
+ADDITIONAL POLICY CONTEXT
+============================================================
+
+{policy_display}
+
+
+============================================================
+ORIGINAL CONTENT
+============================================================
+
+{original_content}
+
+
+============================================================
+BLOCKING COMPLIANCE FINDINGS
+============================================================
+
+{compliance_text}
+
+
+============================================================
+MISSING MANDATORY REQUIREMENTS
+============================================================
+
+{requirement_text}
+
+
+============================================================
+MANDATORY EDIT RULES
+============================================================
+
+1. Correct every confirmed Blocking Compliance Finding.
+
+2. Complete every confirmed Mandatory Requirement.
+
+3. Make the smallest TOTAL change possible.
+
+4. Preserve correct facts, creator voice, platform style and unaffected wording.
+
+5. Treat Compliance Evidence + Policy Basis as the source of truth.
+
+6. Treat a Compliance REQUIRED_ACTION as guidance only. If it would introduce
+   unsupported material, ignore the unsafe part and use the smallest supported
+   correction.
+
+7. Treat Requirement REQUIRED_ACTION as a deterministic instruction for adding
+   only the missing required content.
+
+8. Do NOT add extra benefits or claims around a Requirement.
+
+9. Do NOT fix optional Advisory Findings.
+
+10. Do NOT introduce unsupported:
+
+- product claims
+- functions
+- benefits
+- creator traits
+- creator experiences
+- guarantees
+- performance outcomes
+- health outcomes
+- medical outcomes
+
+11. Never invent:
+
+- studies
+- certifications
+- statistics
+- prices
+- ingredients
+- specifications
+- endorsements
+- testing results
+
+12. Preserve factual qualifiers exactly.
+
+13. Never strengthen supplied facts.
+
+14. Prefer deletion when deletion safely resolves a false or prohibited claim.
+
+15. If replacing a false claim, use only an explicit supplied fact and nothing
+    stronger.
+
+16. Preserve existing first-person creator wording when it is not itself a
+    confirmed mandatory problem.
+
+
+============================================================
+FINAL SELF-CHECK
+============================================================
+
+Before returning, silently verify:
+
+1. All Compliance Findings are corrected.
+2. All Requirement Findings are completed.
+3. No unsupported new claim was added.
+4. No extra benefit was attached to a Requirement.
+5. No new creator experience was invented.
+6. Creator voice was preserved wherever possible.
+7. No optional Advisory optimization occurred.
+8. Changes are minimal.
+
+
+============================================================
+OUTPUT FORMAT
+============================================================
+
+Return ONLY the revised marketing content.
+
+Do NOT explain changes.
+Do NOT provide reasoning.
+Do NOT provide edit notes.
+Do NOT use Markdown fences.
+"""
+
+    return generate_text(
+        prompt=prompt,
+        model_key=model_key,
+        temperature=0.0,
+    )
+
+
+# =========================================================
+# Optional Quality Optimization
+# =========================================================
+
+def optimize_quality(
+    brand_info: str,
+    campaign_brief: str,
+    original_content: str,
+    evaluation: dict,
+    policy_context: str = "",
+    model_key: str | None = None,
+) -> str:
+    """
+    Optional human-triggered quality optimization.
+
+    Advisory findings remain non-mandatory.
+    """
+
+    advisory_findings = (
+        evaluation.get(
+            "advisory_findings",
+            [],
+        )
+        or []
+    )
+
+    if not advisory_findings:
+        return original_content
+
+    advisory_text = format_advisory_findings(
+        advisory_findings
+    )
+
+    policy_display = _policy_context_display(
+        policy_context
+    )
+
+    origin_instruction = _content_origin_instruction(
+        evaluation
+    )
+
+    prompt = f"""
+You are a careful Marketing Content Editor.
+
+This task is an:
+
+OPTIONAL QUALITY OPTIMIZATION
+
+It is triggered only because a Human user chose to act on Advisory Findings.
+
+Advisory Findings are suggestions, not mandatory violations.
+
+
+============================================================
+CONTENT ORIGIN
+============================================================
+
+{origin_instruction}
+
+
+============================================================
+BRAND INFORMATION
+============================================================
+
+{brand_info}
+
+
+============================================================
+CAMPAIGN BRIEF
+============================================================
+
+{campaign_brief}
+
+
+============================================================
+ADDITIONAL POLICY CONTEXT
+============================================================
+
+{policy_display}
 
 
 ============================================================
@@ -651,59 +1142,106 @@ NON-BLOCKING ADVISORY FINDINGS
 EDITING RULES
 ============================================================
 
-1. Address useful advisory findings
-   when doing so improves the content.
+1. OPTIONAL ONLY
 
-2. Preserve all correct factual information.
+Address useful Advisory Findings only when doing so improves the content.
 
-3. Do not introduce unsupported product claims.
 
-4. Do not invent:
+2. PRESERVE FACTS
 
-   - ingredients
-   - specifications
-   - prices
-   - certifications
-   - clinical evidence
-   - research findings
-   - medical claims
-   - health outcomes
-   - user experiences
-   - customer reviews
-   - performance claims
+Preserve all correct factual information.
 
-5. Do not infer unsupported properties.
 
-For example:
+3. PRESERVE CREATOR VOICE
 
-"lightweight"
-does not automatically mean
-"fast absorbing".
+Preserve existing creator voice, first-person perspective and authentic style
+as much as possible.
 
-"non-greasy"
-does not automatically mean
-"non-sticky".
 
-6. Do not strengthen factual qualifiers.
+4. RESPECT ADVISORY PROVENANCE
 
-"up to"
-must remain qualified.
+SUPPLIED_CONTEXT means the Advisory is grounded in supplied source material.
 
-"approximately"
-must remain approximate.
+GENERAL_HEURISTIC means it comes from general marketing/platform knowledge or
+model judgment.
 
-"may"
-must not become
-"will".
+Do NOT treat GENERAL_HEURISTIC as an authoritative policy rule or mandatory
+campaign requirement.
 
-7. Brand restrictions and supplied policy
-   always override stylistic optimization.
 
-8. Improve only what is useful.
+5. ADVISORY SUGGESTIONS ARE NOT SOURCE OF TRUTH
 
-9. Avoid unnecessary full rewrites.
+A free-form Advisory suggestion may itself be unsafe or overly specific.
 
-10. Do not explain your changes.
+If following a suggestion would require an unsupported claim, inferred benefit,
+new creator experience or stronger promise:
+
+IGNORE that unsafe part.
+
+Use a safer conservative edit instead.
+
+
+6. DO NOT INVENT
+
+Never invent:
+
+- ingredients
+- specifications
+- prices
+- certifications
+- clinical evidence
+- research findings
+- medical claims
+- health outcomes
+- customer reviews
+- performance claims
+- guarantees
+- creator traits
+- new creator experiences
+
+
+7. NO UNSUPPORTED INFERENCE
+
+Examples:
+
+"lightweight" does not automatically mean "fast absorbing".
+
+"10,000mAh" does not automatically mean "battery lasts all day".
+
+
+8. PRESERVE QUALIFIERS
+
+Do not strengthen:
+
+- up to
+- approximately
+- may
+- designed for
+
+
+9. BRAND / POLICY PRIORITY
+
+Explicit Brand restrictions and supplied policy rules always override optional
+style optimization.
+
+
+10. AVOID UNNECESSARY FULL REWRITES
+
+Change only what is useful for the selected Advisory improvements.
+
+
+============================================================
+FINAL SELF-CHECK
+============================================================
+
+Before returning, silently verify:
+
+1. No unsupported factual claim was introduced.
+2. No new creator trait or experience was invented.
+3. No factual qualifier was strengthened.
+4. General heuristics were not treated as mandatory rules.
+5. Existing creator voice was preserved where possible.
+6. Changes were limited to useful optional improvements.
 
 
 ============================================================
@@ -712,11 +1250,11 @@ OUTPUT FORMAT
 
 Return ONLY the optimized marketing content.
 
-Do NOT provide explanations.
-
+Do NOT explain changes.
+Do NOT provide reasoning.
+Do NOT provide edit notes.
 Do NOT use Markdown fences.
 """
-
 
     return generate_text(
         prompt=prompt,
@@ -736,24 +1274,27 @@ def revise_content(
     evaluation: dict,
     policy_context: str = "",
     model_key: str | None = None,
+    apply_advisory: bool = True,
 ) -> str:
     """
     Backward-compatible revision interface.
 
     Priority:
 
-    Blocking compliance findings
-        ↓
-    Minimal Compliance Edit
+    Compliance + Requirement
+        -> one combined mandatory edit
 
-    Otherwise:
+    Compliance only
+        -> Minimal Compliance Edit
 
-    Advisory findings
-        ↓
-    Optional Quality Optimization
+    Requirement only
+        -> Minimal Requirement Completion
 
-    This wrapper is retained so older code
-    importing revise_content does not break.
+    Advisory only
+        -> optional quality optimization only when apply_advisory=True
+
+    For the new Creator Review UI, use apply_advisory=False unless a Human
+    explicitly clicks an Optimize action.
     """
 
     compliance_findings = (
@@ -761,52 +1302,69 @@ def revise_content(
             "compliance_findings",
             [],
         )
+        or []
     )
 
+    requirement_findings = (
+        evaluation.get(
+            "requirement_findings",
+            [],
+        )
+        or []
+    )
 
-    if compliance_findings:
-
-        return fix_compliance_issues(
+    if (
+        compliance_findings
+        and requirement_findings
+    ):
+        return fix_mandatory_issues(
             brand_info=brand_info,
-
             campaign_brief=campaign_brief,
-
             original_content=original_content,
-
             evaluation=evaluation,
-
             policy_context=policy_context,
-
             model_key=model_key,
         )
 
+    if compliance_findings:
+        return fix_compliance_issues(
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            original_content=original_content,
+            evaluation=evaluation,
+            policy_context=policy_context,
+            model_key=model_key,
+        )
+
+    if requirement_findings:
+        return complete_requirements(
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            original_content=original_content,
+            evaluation=evaluation,
+            policy_context=policy_context,
+            model_key=model_key,
+        )
 
     advisory_findings = (
         evaluation.get(
             "advisory_findings",
             [],
         )
+        or []
     )
 
-
-    if advisory_findings:
-
+    if (
+        advisory_findings
+        and apply_advisory
+    ):
         return optimize_quality(
             brand_info=brand_info,
-
             campaign_brief=campaign_brief,
-
             original_content=original_content,
-
             evaluation=evaluation,
-
             policy_context=policy_context,
-
             model_key=model_key,
         )
 
-
-    # No issue found:
-    # return the original without spending
-    # another LLM request.
     return original_content

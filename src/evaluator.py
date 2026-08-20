@@ -1,14 +1,11 @@
 import re
 import unicodedata
 
-from src.llm_client import (
-    JUDGE_MODEL_KEY,
-    generate_text,
-)
+from src.llm_client import JUDGE_MODEL_KEY, generate_text
 
 
 # =========================================================
-# Diagnostic Score Fields
+# Constants
 # =========================================================
 
 SCORE_FIELDS = [
@@ -19,36 +16,238 @@ SCORE_FIELDS = [
     "unsupported_claim_risk",
 ]
 
-
-# =========================================================
-# Allowed Policy Sources
-# =========================================================
-
-# These are not issue categories.
-#
-# They define the only supplied sources that may
-# support a blocking compliance decision.
-
 ALLOWED_POLICY_SOURCES = {
     "BRAND INFORMATION",
     "CAMPAIGN BRIEF",
     "ADDITIONAL POLICY CONTEXT",
 }
 
+VALID_CONTENT_ORIGINS = {
+    "generated",
+    "creator_draft",
+    "unknown",
+}
+
+ALLOWED_REQUIREMENT_MATCH_MODES = {
+    "EXACT",
+    "SEMANTIC",
+}
+
+ALLOWED_ADVISORY_BASIS_TYPES = {
+    "SUPPLIED_CONTEXT",
+    "GENERAL_HEURISTIC",
+    "SYSTEM_GROUNDING_REVIEW",
+}
+
 
 # =========================================================
-# Response Cleaning
+# Basic Normalization
+# =========================================================
+
+def normalize_content_origin(value: str | None) -> str:
+    """Normalize the origin of the submitted content."""
+
+    normalized = str(value or "generated").strip().lower()
+
+    aliases = {
+        "ai": "generated",
+        "ai_generated": "generated",
+        "generated_content": "generated",
+        "creator": "creator_draft",
+        "creator_submitted": "creator_draft",
+        "submitted": "creator_draft",
+        "creator_draft": "creator_draft",
+        "unknown": "unknown",
+    }
+
+    normalized = aliases.get(
+        normalized,
+        normalized,
+    )
+
+    if normalized not in VALID_CONTENT_ORIGINS:
+        return "unknown"
+
+    return normalized
+
+
+def normalize_requirement_match_mode(
+    value: str | None,
+) -> str:
+    """Normalize EXACT / SEMANTIC requirement matching mode."""
+
+    normalized = str(
+        value or "SEMANTIC"
+    ).strip().upper()
+
+    if normalized not in ALLOWED_REQUIREMENT_MATCH_MODES:
+        return "SEMANTIC"
+
+    return normalized
+
+
+def normalize_requirements(
+    requirements,
+) -> list[dict]:
+    """
+    Normalize structured mandatory campaign requirements.
+
+    Supported examples:
+
+    ["BPA-free", "Portable design"]
+
+    or:
+
+    [
+        {
+            "requirement_id": "R1",
+            "content": "#BrandCampaign",
+            "match_mode": "EXACT",
+        }
+    ]
+
+    Plain strings default to SEMANTIC.
+    """
+
+    normalized_requirements = []
+
+    for index, raw_item in enumerate(
+        requirements or [],
+        start=1,
+    ):
+        if isinstance(
+            raw_item,
+            str,
+        ):
+            content = raw_item.strip()
+            requirement_id = f"R{index}"
+            match_mode = "SEMANTIC"
+
+        elif isinstance(
+            raw_item,
+            dict,
+        ):
+            content = str(
+                raw_item.get("content")
+                or raw_item.get("requirement")
+                or raw_item.get("item")
+                or raw_item.get("missing_item")
+                or ""
+            ).strip()
+
+            requirement_id = str(
+                raw_item.get("requirement_id")
+                or raw_item.get("id")
+                or f"R{index}"
+            ).strip()
+
+            match_mode = normalize_requirement_match_mode(
+                raw_item.get("match_mode")
+            )
+
+        else:
+            continue
+
+        if not content:
+            continue
+
+        if not requirement_id:
+            requirement_id = f"R{index}"
+
+        normalized_requirements.append(
+            {
+                "requirement_id": requirement_id,
+                "content": content,
+                "match_mode": match_mode,
+            }
+        )
+
+    return normalized_requirements
+
+
+def format_requirements_for_prompt(
+    requirements: list[dict],
+) -> str:
+    """Render structured requirements for the Judge prompt."""
+
+    if not requirements:
+        return (
+            "No structured mandatory campaign "
+            "requirements were supplied."
+        )
+
+    return "\n".join(
+        " | ".join(
+            [
+                f"ID={item['requirement_id']}",
+                f"MATCH_MODE={item['match_mode']}",
+                f"CONTENT={item['content']}",
+            ]
+        )
+        for item in requirements
+    )
+
+
+def build_requirement_required_action(
+    requirement: str,
+    match_mode: str,
+) -> str:
+    """
+    Build Requirement Required Action deterministically.
+
+    The LLM decides whether a structured requirement is missing.
+    Python decides the mandatory action so the Judge cannot introduce
+    an unsupported marketing claim inside REQUIRED_ACTION.
+    """
+
+    requirement = str(
+        requirement or ""
+    ).strip()
+
+    match_mode = normalize_requirement_match_mode(
+        match_mode
+    )
+
+    if match_mode == "EXACT":
+        return (
+            f'Add the exact required content: "{requirement}". '
+            "Make the smallest necessary change and do not "
+            "introduce any unsupported claim, guarantee, "
+            "creator experience, or additional product benefit."
+        )
+
+    return (
+        f'Add a natural mention of the required concept: "{requirement}". '
+        "Equivalent wording is acceptable. Make the smallest "
+        "necessary change and do not introduce any unsupported "
+        "claim, guarantee, creator experience, or additional "
+        "product benefit."
+    )
+
+
+def normalize_advisory_basis_type(
+    value: str | None,
+) -> str:
+    """Normalize Advisory provenance labels."""
+
+    normalized = str(
+        value or "GENERAL_HEURISTIC"
+    ).strip().upper()
+
+    if normalized not in ALLOWED_ADVISORY_BASIS_TYPES:
+        return "GENERAL_HEURISTIC"
+
+    return normalized
+
+
+# =========================================================
+# Response Parsing Helpers
 # =========================================================
 
 def clean_response_text(
     response_text: str,
 ) -> str:
-    """
-    Clean common LLM formatting artifacts.
-
-    The evaluator intentionally does not depend
-    on JSON output.
-    """
+    """Clean common LLM formatting artifacts."""
 
     if not isinstance(
         response_text,
@@ -66,7 +265,6 @@ def clean_response_text(
         .replace("\u200d", "")
     )
 
-    # Remove hidden reasoning blocks when present.
     cleaned = re.sub(
         r"<think>.*?</think>",
         "",
@@ -77,7 +275,6 @@ def clean_response_text(
         ),
     )
 
-    # Remove accidental Markdown fences.
     cleaned = re.sub(
         r"```(?:text|txt|json|python)?",
         "",
@@ -85,34 +282,17 @@ def clean_response_text(
         flags=re.IGNORECASE,
     )
 
-    cleaned = cleaned.replace(
-        "```",
-        "",
+    return (
+        cleaned
+        .replace("```", "")
+        .strip()
     )
 
-    return cleaned.strip()
-
-
-# =========================================================
-# Key-Value Parser
-# =========================================================
 
 def parse_key_value_response(
     response_text: str,
 ) -> dict:
-    """
-    Parse simple line-based Judge output.
-
-    Example:
-
-    BRAND_ALIGNMENT=8
-    TONE_MATCH=7
-
-    Values may contain quotation marks,
-    colons, commas and Chinese punctuation.
-
-    Parsing splits only on the first "=".
-    """
+    """Parse simple line-based KEY=VALUE Judge output."""
 
     cleaned = clean_response_text(
         response_text
@@ -126,7 +306,6 @@ def parse_key_value_response(
     parsed = {}
 
     for raw_line in cleaned.splitlines():
-
         line = raw_line.strip()
 
         if not line:
@@ -157,22 +336,16 @@ def parse_key_value_response(
 
         value = value.strip()
 
-        # Some models partially imitate JSON.
         if value.endswith(","):
             value = value[:-1].rstrip()
 
-        # Remove one matching outer quote pair.
         if len(value) >= 2:
-
-            quote_pairs = [
+            for left, right in [
                 ('"', '"'),
                 ("'", "'"),
                 ("“", "”"),
                 ("‘", "’"),
-            ]
-
-            for left, right in quote_pairs:
-
+            ]:
                 if (
                     value.startswith(left)
                     and value.endswith(right)
@@ -185,72 +358,45 @@ def parse_key_value_response(
                     break
 
         if key:
-            parsed[
-                key
-            ] = value
+            parsed[key] = value
 
     if not parsed:
-
-        preview = repr(
-            cleaned[:500]
-        )
-
         raise ValueError(
             "Judge response could not be parsed "
             "as key-value output. "
-            f"Raw response preview: {preview}"
+            f"Raw response preview: {cleaned[:500]!r}"
         )
 
     return parsed
 
 
-# =========================================================
-# Score Normalization
-# =========================================================
-
 def normalize_score(
     value,
     field_name: str,
 ):
-    """
-    Normalize a diagnostic score to 1-10.
-    """
+    """Normalize a diagnostic score to 1-10."""
 
-    if isinstance(
-        value,
-        bool,
-    ):
+    if isinstance(value, bool):
         raise ValueError(
             f"{field_name} must be numeric."
         )
 
-    if isinstance(
-        value,
-        str,
-    ):
-
+    if isinstance(value, str):
         value = value.strip()
 
-        # Supports:
-        #
-        # 8
-        # 8.0
-        # 8/10
-
-        score_match = re.match(
+        match = re.match(
             r"^-?\d+(?:\.\d+)?",
             value,
         )
 
-        if not score_match:
-
+        if not match:
             raise ValueError(
                 f"{field_name} must be numeric. "
                 f"Received: {value}"
             )
 
         value = float(
-            score_match.group()
+            match.group()
         )
 
     if not isinstance(
@@ -263,58 +409,31 @@ def normalize_score(
 
     if not 1 <= value <= 10:
         raise ValueError(
-            f"{field_name} must be between "
-            f"1 and 10."
+            f"{field_name} must be between 1 and 10."
         )
 
-    if float(
-        value
-    ).is_integer():
-
-        return int(
-            value
-        )
+    if float(value).is_integer():
+        return int(value)
 
     return round(
-        float(
-            value
-        ),
+        float(value),
         2,
     )
 
 
-# =========================================================
-# Policy Source Normalization
-# =========================================================
-
 def normalize_policy_source(
     value: str,
 ) -> str:
-    """
-    Normalize common source-name variations.
-
-    This is a closed source list because these
-    are the only documents supplied to the Judge.
-
-    This does NOT impose a closed issue taxonomy.
-    """
-
-    text = str(
-        value
-        or ""
-    ).strip()
-
-    normalized = (
-        text
-        .upper()
-        .replace("_", " ")
-        .replace("-", " ")
-    )
+    """Normalize common Policy Source variations."""
 
     normalized = re.sub(
         r"\s+",
         " ",
-        normalized,
+        str(value or "")
+        .strip()
+        .upper()
+        .replace("_", " ")
+        .replace("-", " "),
     ).strip()
 
     aliases = {
@@ -355,22 +474,11 @@ def normalize_policy_source(
     )
 
 
-# =========================================================
-# Indexed Field Helpers
-# =========================================================
-
 def get_indexed_numbers(
     parsed: dict,
     prefix: str,
 ) -> list:
-    """
-    Find indexes such as:
-
-    COMPLIANCE_1_EVIDENCE
-    COMPLIANCE_2_REASON
-
-    -> [1, 2]
-    """
+    """Find indexes such as COMPLIANCE_1_* -> [1]."""
 
     indexes = set()
 
@@ -379,18 +487,14 @@ def get_indexed_numbers(
     )
 
     for key in parsed:
-
         match = pattern.match(
             key
         )
 
         if match:
-
             indexes.add(
                 int(
-                    match.group(
-                        1
-                    )
+                    match.group(1)
                 )
             )
 
@@ -400,41 +504,32 @@ def get_indexed_numbers(
 
 
 # =========================================================
-# Grounding Helpers
+# Deterministic Grounding Helpers
 # =========================================================
 
 def strip_wrapping_quotes(
     text: str,
 ) -> str:
-    """
-    Remove one matching outer quotation pair.
-
-    Internal quotation marks are preserved.
-    """
+    """Remove one matching outer quote pair."""
 
     value = str(
-        text
-        or ""
+        text or ""
     ).strip()
 
-    quote_pairs = [
+    for left, right in [
         ('"', '"'),
         ("'", "'"),
         ("“", "”"),
         ("‘", "’"),
         ("「", "」"),
         ("『", "』"),
-    ]
-
-    for left, right in quote_pairs:
-
+    ]:
         if (
             value.startswith(left)
             and value.endswith(right)
             and len(value)
             >= len(left) + len(right)
         ):
-
             return value[
                 len(left):
                 len(value) - len(right)
@@ -446,29 +541,13 @@ def strip_wrapping_quotes(
 def normalize_for_grounding(
     text: str,
 ) -> str:
-    """
-    Conservative normalization used for
-    deterministic grounding checks.
-
-    We normalize:
-
-    - Unicode width
-    - hidden characters
-    - repeated whitespace
-    - case
-
-    We intentionally preserve punctuation
-    and semantic content.
-    """
-
-    value = str(
-        text
-        or ""
-    )
+    """Conservative normalization for provenance checks."""
 
     value = unicodedata.normalize(
         "NFKC",
-        value,
+        str(
+            text or ""
+        ),
     )
 
     value = (
@@ -479,13 +558,15 @@ def normalize_for_grounding(
         .replace("\u200d", "")
     )
 
-    value = re.sub(
-        r"\s+",
-        " ",
-        value,
-    ).strip()
-
-    return value.casefold()
+    return (
+        re.sub(
+            r"\s+",
+            " ",
+            value,
+        )
+        .strip()
+        .casefold()
+    )
 
 
 def text_is_grounded(
@@ -493,17 +574,9 @@ def text_is_grounded(
     source_text: str,
 ) -> bool:
     """
-    Check whether a quoted Evidence / Policy Basis
-    actually appears in its claimed source.
+    Verify a quotation actually appears in its claimed source.
 
-    This is intentionally stricter than semantic
-    similarity.
-
-    The purpose is provenance validation,
-    not semantic classification.
-
-    A paraphrase is NOT enough for a hard
-    blocking decision.
+    This is intentionally stricter than semantic similarity.
     """
 
     quote = strip_wrapping_quotes(
@@ -511,34 +584,26 @@ def text_is_grounded(
     )
 
     source = str(
-        source_text
-        or ""
+        source_text or ""
     )
 
     if not quote or not source:
         return False
 
-    normalized_quote = (
-        normalize_for_grounding(
-            quote
-        )
+    normalized_quote = normalize_for_grounding(
+        quote
     )
 
-    normalized_source = (
-        normalize_for_grounding(
-            source
-        )
+    normalized_source = normalize_for_grounding(
+        source
     )
 
     if not normalized_quote:
         return False
 
-    # Standard substring check.
     if normalized_quote in normalized_source:
         return True
 
-    # Allow differences caused only by line breaks
-    # or spaces, especially common in Chinese text.
     compact_quote = re.sub(
         r"\s+",
         "",
@@ -551,14 +616,11 @@ def text_is_grounded(
         normalized_source,
     )
 
-    if (
+    return bool(
         compact_quote
         and compact_quote
         in compact_source
-    ):
-        return True
-
-    return False
+    )
 
 
 def get_policy_source_text(
@@ -567,10 +629,7 @@ def get_policy_source_text(
     campaign_brief: str,
     policy_context: str,
 ) -> str:
-    """
-    Return the actual text belonging to
-    a declared policy source.
-    """
+    """Return actual text belonging to a declared Policy Source."""
 
     source_map = {
         "BRAND INFORMATION":
@@ -595,39 +654,30 @@ def get_policy_source_text(
 def is_yes(
     value: str,
 ) -> bool:
-    """
-    Normalize a direct-conflict flag.
-    """
+    """Normalize direct-conflict flags."""
 
-    normalized = str(
-        value
-        or ""
-    ).strip().upper()
-
-    return normalized in {
-        "YES",
-        "Y",
-        "TRUE",
-        "1",
-    }
+    return (
+        str(value or "")
+        .strip()
+        .upper()
+        in {
+            "YES",
+            "Y",
+            "TRUE",
+            "1",
+        }
+    )
 
 
 # =========================================================
-# Grounding Downgrade Helper
+# Compliance Findings
 # =========================================================
 
 def make_grounding_advisory(
     evidence: str,
     reason: str,
 ) -> dict:
-    """
-    Preserve a potential concern when the
-    deterministic grounding gate rejects it
-    as a blocking finding.
-
-    This avoids silently throwing away
-    potentially useful human-review signals.
-    """
+    """Preserve a rejected Blocking proposal as a review signal."""
 
     return {
         "area":
@@ -643,16 +693,20 @@ def make_grounding_advisory(
             (
                 "Review this concern manually. "
                 "It was not treated as a blocking "
-                "compliance finding because the "
-                "required deterministic grounding "
-                "could not be verified."
+                "compliance finding because the required "
+                "deterministic grounding could not be verified."
             ),
+
+        "basis_type":
+            "SYSTEM_GROUNDING_REVIEW",
+
+        "basis_source":
+            "",
+
+        "basis_quote":
+            "",
     }
 
-
-# =========================================================
-# Compliance Finding Parser + Deterministic Grounding Gate
-# =========================================================
 
 def parse_compliance_findings(
     parsed: dict,
@@ -660,68 +714,41 @@ def parse_compliance_findings(
     brand_info: str,
     campaign_brief: str,
     policy_context: str,
-) -> tuple[list, list, list]:
-    """
-    Parse and validate proposed blocking findings.
-
-    A finding becomes BLOCKING only when ALL
-    deterministic gates pass.
-
-    Required gates:
-
-    1. The Judge explicitly marks it as
-       a DIRECT_CONFLICT.
-
-    2. Evidence is an actual quotation from
-       GENERATED CONTENT.
-
-    3. Policy Source is one of the supplied
-       source documents.
-
-    4. Policy Basis is an actual quotation
-       from that exact Policy Source.
-
-    5. If Additional Policy Context is cited,
-       such context must actually have been supplied.
-
-    Findings that fail the grounding gate are
-    downgraded to Advisory rather than silently removed.
-
-    Returns:
-
-    (
-        valid_blocking_findings,
-        parser_review_notes,
-        downgraded_advisories
-    )
-    """
+) -> tuple[
+    list,
+    list,
+    list,
+]:
+    """Parse proposed Blocking Findings through deterministic gates."""
 
     findings = []
-
     review_notes = []
-
     downgraded_advisories = []
 
-    indexes = get_indexed_numbers(
+    for index in get_indexed_numbers(
         parsed,
         "COMPLIANCE",
-    )
-
-    for index in indexes:
+    ):
 
         prefix = (
             f"COMPLIANCE_{index}"
         )
 
-        direct_conflict = parsed.get(
-            f"{prefix}_DIRECT_CONFLICT",
-            "",
-        ).strip()
+        direct_conflict = (
+            parsed.get(
+                f"{prefix}_DIRECT_CONFLICT",
+                "",
+            )
+            .strip()
+        )
 
-        evidence = parsed.get(
-            f"{prefix}_EVIDENCE",
-            "",
-        ).strip()
+        evidence = (
+            parsed.get(
+                f"{prefix}_EVIDENCE",
+                "",
+            )
+            .strip()
+        )
 
         policy_source = (
             normalize_policy_source(
@@ -732,26 +759,43 @@ def parse_compliance_findings(
             )
         )
 
-        policy_basis = parsed.get(
-            f"{prefix}_POLICY_BASIS",
-            "",
-        ).strip()
+        policy_basis = (
+            parsed.get(
+                f"{prefix}_POLICY_BASIS",
+                "",
+            )
+            .strip()
+        )
 
-        reason = parsed.get(
-            f"{prefix}_REASON",
-            "",
-        ).strip()
+        reason = (
+            parsed.get(
+                f"{prefix}_REASON",
+                "",
+            )
+            .strip()
+        )
 
-        required_action = parsed.get(
-            f"{prefix}_REQUIRED_ACTION",
-            "",
-        ).strip()
+        required_action = (
+            parsed.get(
+                f"{prefix}_REQUIRED_ACTION",
+                "",
+            )
+            .strip()
+        )
 
+        def downgrade(
+            message: str,
+        ):
+            review_notes.append(
+                message
+            )
 
-        # =================================================
-        # Gate 0:
-        # Required structure
-        # =================================================
+            downgraded_advisories.append(
+                make_grounding_advisory(
+                    evidence=evidence,
+                    reason=message,
+                )
+            )
 
         if not (
             evidence
@@ -759,199 +803,105 @@ def parse_compliance_findings(
             and policy_basis
             and reason
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} was not treated as blocking "
-                f"because required grounding fields "
-                f"were incomplete."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} was not treated as blocking "
+                    "because required grounding fields "
+                    "were incomplete."
                 )
             )
 
             continue
-
-
-        # =================================================
-        # Gate 1:
-        # Direct Conflict Only
-        # =================================================
 
         if not is_yes(
             direct_conflict
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} was downgraded because the "
-                f"Judge did not confirm a direct "
-                f"text-to-rule conflict."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} was downgraded because "
+                    "the Judge did not confirm a direct "
+                    "text-to-rule conflict."
                 )
             )
 
             continue
-
-
-        # =================================================
-        # Gate 2:
-        # Allowed Policy Source
-        # =================================================
 
         if (
             policy_source
             not in ALLOWED_POLICY_SOURCES
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} referenced unsupported "
-                f"policy source: {policy_source}. "
-                f"It was not treated as blocking."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} referenced unsupported "
+                    "policy source: "
+                    f"{policy_source}. "
+                    "It was not treated as blocking."
                 )
             )
 
             continue
-
-
-        # =================================================
-        # Gate 3:
-        # Additional Policy Context must exist
-        # =================================================
 
         if (
             policy_source
             == "ADDITIONAL POLICY CONTEXT"
             and not str(
-                policy_context
-                or ""
+                policy_context or ""
             ).strip()
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} cited ADDITIONAL POLICY "
-                f"CONTEXT even though no additional "
-                f"policy context was supplied."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} cited ADDITIONAL POLICY "
+                    "CONTEXT even though no additional "
+                    "policy context was supplied."
                 )
             )
 
             continue
-
-
-        # =================================================
-        # Gate 4:
-        # Evidence must exist in Generated Content
-        # =================================================
 
         if not text_is_grounded(
             quoted_text=evidence,
             source_text=generated_content,
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} was downgraded because its "
-                f"Evidence could not be verified as "
-                f"an actual quotation from the "
-                f"Generated Content."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} was downgraded because "
+                    "its Evidence could not be verified "
+                    "as an actual quotation from the "
+                    "submitted content."
                 )
             )
 
             continue
 
-
-        # =================================================
-        # Gate 5:
-        # Policy Basis must exist in claimed source
-        # =================================================
-
-        source_text = get_policy_source_text(
-            policy_source=policy_source,
-            brand_info=brand_info,
-            campaign_brief=campaign_brief,
-            policy_context=policy_context,
+        source_text = (
+            get_policy_source_text(
+                policy_source=policy_source,
+                brand_info=brand_info,
+                campaign_brief=campaign_brief,
+                policy_context=policy_context,
+            )
         )
-
 
         if not text_is_grounded(
             quoted_text=policy_basis,
             source_text=source_text,
         ):
-
-            message = (
-                f"Potential compliance finding "
-                f"{index} was downgraded because its "
-                f"Policy Basis could not be verified "
-                f"in the claimed Policy Source "
-                f"({policy_source})."
-            )
-
-            review_notes.append(
-                message
-            )
-
-            downgraded_advisories.append(
-                make_grounding_advisory(
-                    evidence=evidence,
-                    reason=message,
+            downgrade(
+                (
+                    "Potential compliance finding "
+                    f"{index} was downgraded because "
+                    "its Policy Basis could not be verified "
+                    "in the claimed Policy Source "
+                    f"({policy_source})."
                 )
             )
 
             continue
-
-
-        # =================================================
-        # Finding Passed All Grounding Gates
-        # =================================================
 
         findings.append(
             {
@@ -976,6 +926,229 @@ def parse_compliance_findings(
             }
         )
 
+    return (
+        findings,
+        review_notes,
+        downgraded_advisories,
+    )
+
+
+# =========================================================
+# Requirement Findings
+# =========================================================
+
+def make_requirement_review_advisory(
+    requirement: str,
+    reason: str,
+) -> dict:
+    """Preserve invalid Requirement proposals as review signals."""
+
+    return {
+        "area":
+            "Requirement Grounding Review",
+
+        "evidence":
+            requirement,
+
+        "reason":
+            reason,
+
+        "suggestion":
+            (
+                "Review this requirement manually. "
+                "It was not treated as a mandatory "
+                "Requirement Finding because its "
+                "structured grounding could not be verified."
+            ),
+
+        "basis_type":
+            "SYSTEM_GROUNDING_REVIEW",
+
+        "basis_source":
+            "",
+
+        "basis_quote":
+            "",
+    }
+
+
+def parse_requirement_findings(
+    parsed: dict,
+    requirements: list[dict],
+    submitted_content: str,
+) -> tuple[
+    list,
+    list,
+    list,
+]:
+    """
+    Parse mandatory Campaign Requirement omissions.
+
+    EXACT absence is deterministic.
+
+    SEMANTIC absence is a Judge semantic decision and should
+    receive Cross-Judge confirmation before automatic action.
+    """
+
+    findings = []
+    review_notes = []
+    downgraded_advisories = []
+
+    requirement_map = {
+        str(
+            item[
+                "requirement_id"
+            ]
+        ):
+            item
+
+        for item
+        in requirements
+    }
+
+    for index in get_indexed_numbers(
+        parsed,
+        "REQUIREMENT",
+    ):
+
+        prefix = (
+            f"REQUIREMENT_{index}"
+        )
+
+        requirement_id = str(
+            parsed.get(
+                f"{prefix}_REQUIREMENT_ID",
+                "",
+            )
+        ).strip()
+
+        reason = str(
+            parsed.get(
+                f"{prefix}_REASON",
+                "",
+            )
+        ).strip()
+
+        if (
+            not requirement_id
+            or requirement_id
+            not in requirement_map
+        ):
+            message = (
+                "Potential requirement finding "
+                f"{index} referenced an unknown "
+                "structured requirement ID: "
+                f"{requirement_id or '<empty>'}."
+            )
+
+            review_notes.append(
+                message
+            )
+
+            downgraded_advisories.append(
+                make_requirement_review_advisory(
+                    requirement=requirement_id,
+                    reason=message,
+                )
+            )
+
+            continue
+
+        requirement = (
+            requirement_map[
+                requirement_id
+            ]
+        )
+
+        content = (
+            requirement[
+                "content"
+            ]
+        )
+
+        match_mode = (
+            requirement[
+                "match_mode"
+            ]
+        )
+
+        if not reason:
+
+            message = (
+                "Potential requirement finding "
+                f"{index} for "
+                f"{requirement_id} was rejected "
+                "because REASON was empty."
+            )
+
+            review_notes.append(
+                message
+            )
+
+            downgraded_advisories.append(
+                make_requirement_review_advisory(
+                    requirement=content,
+                    reason=message,
+                )
+            )
+
+            continue
+
+        if (
+            match_mode
+            == "EXACT"
+        ):
+
+            if text_is_grounded(
+                quoted_text=content,
+                source_text=submitted_content,
+            ):
+                review_notes.append(
+                    (
+                        "Potential requirement finding "
+                        f"{index} for "
+                        f"{requirement_id} was rejected "
+                        "because the EXACT required "
+                        "content is already present."
+                    )
+                )
+
+                continue
+
+            verification_mode = (
+                "DETERMINISTIC_EXACT_ABSENCE"
+            )
+
+        else:
+
+            verification_mode = (
+                "JUDGE_SEMANTIC_ABSENCE"
+            )
+
+        findings.append(
+            {
+                "requirement_id":
+                    requirement_id,
+
+                "requirement":
+                    content,
+
+                "match_mode":
+                    match_mode,
+
+                "reason":
+                    reason,
+
+                "required_action":
+                    build_requirement_required_action(
+                        requirement=content,
+                        match_mode=match_mode,
+                    ),
+
+                "verification_mode":
+                    verification_mode,
+            }
+        )
 
     return (
         findings,
@@ -985,50 +1158,82 @@ def parse_compliance_findings(
 
 
 # =========================================================
-# Advisory Finding Parser
+# Advisory Findings + Provenance
 # =========================================================
 
 def parse_advisory_findings(
     parsed: dict,
 ) -> list:
-    """
-    Parse open-ended quality / risk suggestions.
-
-    No closed issue taxonomy is imposed.
-    """
+    """Parse open-ended non-blocking Advisory Findings."""
 
     findings = []
 
-    indexes = get_indexed_numbers(
+    for index in get_indexed_numbers(
         parsed,
         "ADVISORY",
-    )
-
-    for index in indexes:
+    ):
 
         prefix = (
             f"ADVISORY_{index}"
         )
 
-        area = parsed.get(
-            f"{prefix}_AREA",
-            "General",
-        ).strip()
+        area = (
+            parsed.get(
+                f"{prefix}_AREA",
+                "General",
+            )
+            .strip()
+        )
 
-        evidence = parsed.get(
-            f"{prefix}_EVIDENCE",
-            "",
-        ).strip()
+        evidence = (
+            parsed.get(
+                f"{prefix}_EVIDENCE",
+                "",
+            )
+            .strip()
+        )
 
-        reason = parsed.get(
-            f"{prefix}_REASON",
-            "",
-        ).strip()
+        reason = (
+            parsed.get(
+                f"{prefix}_REASON",
+                "",
+            )
+            .strip()
+        )
 
-        suggestion = parsed.get(
-            f"{prefix}_SUGGESTION",
-            "",
-        ).strip()
+        suggestion = (
+            parsed.get(
+                f"{prefix}_SUGGESTION",
+                "",
+            )
+            .strip()
+        )
+
+        basis_type = (
+            normalize_advisory_basis_type(
+                parsed.get(
+                    f"{prefix}_BASIS_TYPE",
+                    "GENERAL_HEURISTIC",
+                )
+            )
+        )
+
+        basis_source = (
+            normalize_policy_source(
+                parsed.get(
+                    f"{prefix}_BASIS_SOURCE",
+                    "",
+                )
+            )
+        )
+
+        basis_quote = (
+            parsed.get(
+                f"{prefix}_BASIS_QUOTE",
+                "",
+            )
+            .strip()
+        )
 
         if not reason:
             continue
@@ -1036,7 +1241,8 @@ def parse_advisory_findings(
         findings.append(
             {
                 "area":
-                    area or "General",
+                    area
+                    or "General",
 
                 "evidence":
                     evidence,
@@ -1046,27 +1252,193 @@ def parse_advisory_findings(
 
                 "suggestion":
                     suggestion,
+
+                "basis_type":
+                    basis_type,
+
+                "basis_source":
+                    basis_source,
+
+                "basis_quote":
+                    basis_quote,
             }
         )
 
     return findings
 
 
+def validate_advisory_provenance(
+    findings: list,
+    brand_info: str,
+    campaign_brief: str,
+    policy_context: str,
+) -> tuple[
+    list,
+    list,
+]:
+    """
+    Validate Advisory source provenance.
+
+    If SUPPLIED_CONTEXT cannot be verified, the advice stays
+    visible but is relabeled GENERAL_HEURISTIC.
+
+    This deterministic check validates quotation provenance.
+
+    The prompt separately instructs the Judge that the quote
+    must also directly support the Advisory conclusion.
+    """
+
+    validated = []
+    review_notes = []
+
+    for index, finding in enumerate(
+        findings,
+        start=1,
+    ):
+
+        item = dict(
+            finding
+        )
+
+        basis_type = (
+            item.get(
+                "basis_type",
+                "GENERAL_HEURISTIC",
+            )
+        )
+
+        if (
+            basis_type
+            == "SYSTEM_GROUNDING_REVIEW"
+        ):
+            validated.append(
+                item
+            )
+
+            continue
+
+        if (
+            basis_type
+            == "SUPPLIED_CONTEXT"
+        ):
+
+            basis_source = (
+                normalize_policy_source(
+                    item.get(
+                        "basis_source",
+                        "",
+                    )
+                )
+            )
+
+            basis_quote = str(
+                item.get(
+                    "basis_quote",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            source_text = (
+                get_policy_source_text(
+                    policy_source=basis_source,
+                    brand_info=brand_info,
+                    campaign_brief=campaign_brief,
+                    policy_context=policy_context,
+                )
+            )
+
+            valid_provenance = (
+                basis_source
+                in ALLOWED_POLICY_SOURCES
+
+                and bool(
+                    basis_quote
+                )
+
+                and text_is_grounded(
+                    quoted_text=basis_quote,
+                    source_text=source_text,
+                )
+            )
+
+            if valid_provenance:
+
+                item[
+                    "basis_source"
+                ] = (
+                    basis_source
+                )
+
+                item[
+                    "basis_quote"
+                ] = (
+                    strip_wrapping_quotes(
+                        basis_quote
+                    )
+                )
+
+            else:
+
+                review_notes.append(
+                    (
+                        "Advisory finding "
+                        f"{index} claimed "
+                        "SUPPLIED_CONTEXT but its "
+                        "basis provenance could not "
+                        "be verified. It was relabeled "
+                        "GENERAL_HEURISTIC."
+                    )
+                )
+
+                item[
+                    "basis_type"
+                ] = (
+                    "GENERAL_HEURISTIC"
+                )
+
+                item[
+                    "basis_source"
+                ] = ""
+
+                item[
+                    "basis_quote"
+                ] = ""
+
+        else:
+
+            item[
+                "basis_type"
+            ] = (
+                "GENERAL_HEURISTIC"
+            )
+
+            item[
+                "basis_source"
+            ] = ""
+
+            item[
+                "basis_quote"
+            ] = ""
+
+        validated.append(
+            item
+        )
+
+    return (
+        validated,
+        review_notes,
+    )
+
+
 # =========================================================
-# Human Review Notes Parser
+# Review Notes + Diagnostic Score
 # =========================================================
 
 def parse_review_notes(
     parsed: dict,
 ) -> list:
-    """
-    Parse:
-
-    REVIEW_NOTE_1=...
-    REVIEW_NOTE_2=...
-    """
-
-    notes = []
+    """Parse REVIEW_NOTE_1=... style notes."""
 
     pattern = re.compile(
         r"^REVIEW_NOTE_(\d+)$"
@@ -1101,21 +1473,16 @@ def parse_review_notes(
             )
 
     indexed_notes.sort(
-        key=lambda item: item[0]
+        key=lambda item:
+            item[0]
     )
 
-    for _, note in indexed_notes:
+    return [
+        note
+        for _, note
+        in indexed_notes
+    ]
 
-        notes.append(
-            note
-        )
-
-    return notes
-
-
-# =========================================================
-# Heuristic Composite Score
-# =========================================================
 
 def calculate_heuristic_score(
     evaluation: dict,
@@ -1123,16 +1490,7 @@ def calculate_heuristic_score(
     """
     Comparative diagnostic signal only.
 
-    IMPORTANT:
-
-    This score is NOT a calibrated
-    acceptance threshold.
-
-    It is used only for:
-
-    - descriptive comparison
-    - model benchmarking
-    - V1 / V2 trend analysis
+    This is NOT a calibrated acceptance threshold.
     """
 
     claim_safety = (
@@ -1145,21 +1503,26 @@ def calculate_heuristic_score(
     score = (
         evaluation[
             "brand_alignment"
-        ] * 0.20
+        ]
+        * 0.20
 
         + evaluation[
             "tone_match"
-        ] * 0.15
+        ]
+        * 0.15
 
         + evaluation[
             "selling_point_coverage"
-        ] * 0.20
+        ]
+        * 0.20
 
         + evaluation[
             "factual_consistency"
-        ] * 0.30
+        ]
+        * 0.30
 
-        + claim_safety * 0.15
+        + claim_safety
+        * 0.15
     )
 
     return round(
@@ -1178,18 +1541,27 @@ def parse_evaluation_response(
     brand_info: str,
     campaign_brief: str,
     policy_context: str,
+    requirements=None,
+    content_origin: str = "generated",
 ) -> dict:
-    """
-    Parse the line-based Judge response into
-    the standard GrowthPilot evaluation schema.
+    """Parse GrowthPilot Evaluation Architecture v2.2 output."""
 
-    Blocking findings pass through the
-    deterministic grounding gate before being
-    accepted.
-    """
+    parsed = (
+        parse_key_value_response(
+            response_text
+        )
+    )
 
-    parsed = parse_key_value_response(
-        response_text
+    normalized_requirements = (
+        normalize_requirements(
+            requirements
+        )
+    )
+
+    normalized_origin = (
+        normalize_content_origin(
+            content_origin
+        )
     )
 
     score_mapping = {
@@ -1215,42 +1587,53 @@ def parse_evaluation_response(
         score_mapping.items()
     ):
 
-        if response_key not in parsed:
-
-            preview = repr(
-                clean_response_text(
-                    response_text
-                )[:500]
-            )
-
+        if (
+            response_key
+            not in parsed
+        ):
             raise ValueError(
-                f"Judge response is missing "
+                "Judge response is missing "
                 f"{response_key}. "
-                f"Raw response preview: {preview}"
+                "Raw response preview: "
+                f"{clean_response_text(response_text)[:500]!r}"
             )
 
         evaluation[
             field_name
-        ] = normalize_score(
-            parsed[
-                response_key
-            ],
-            field_name,
+        ] = (
+            normalize_score(
+                parsed[
+                    response_key
+                ],
+                field_name,
+            )
         )
-
 
     (
         compliance_findings,
-        grounding_review_notes,
-        downgraded_advisories,
-    ) = parse_compliance_findings(
-        parsed=parsed,
-        generated_content=generated_content,
-        brand_info=brand_info,
-        campaign_brief=campaign_brief,
-        policy_context=policy_context,
+        compliance_review_notes,
+        compliance_downgrades,
+    ) = (
+        parse_compliance_findings(
+            parsed=parsed,
+            generated_content=generated_content,
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            policy_context=policy_context,
+        )
     )
 
+    (
+        requirement_findings,
+        requirement_review_notes,
+        requirement_downgrades,
+    ) = (
+        parse_requirement_findings(
+            parsed=parsed,
+            requirements=normalized_requirements,
+            submitted_content=generated_content,
+        )
+    )
 
     model_advisories = (
         parse_advisory_findings(
@@ -1258,6 +1641,23 @@ def parse_evaluation_response(
         )
     )
 
+    all_advisories = (
+        model_advisories
+        + compliance_downgrades
+        + requirement_downgrades
+    )
+
+    (
+        validated_advisories,
+        advisory_review_notes,
+    ) = (
+        validate_advisory_provenance(
+            findings=all_advisories,
+            brand_info=brand_info,
+            campaign_brief=campaign_brief,
+            policy_context=policy_context,
+        )
+    )
 
     model_review_notes = (
         parse_review_notes(
@@ -1265,46 +1665,54 @@ def parse_evaluation_response(
         )
     )
 
-
     evaluation[
         "compliance_findings"
-    ] = compliance_findings
+    ] = (
+        compliance_findings
+    )
 
+    evaluation[
+        "requirement_findings"
+    ] = (
+        requirement_findings
+    )
 
-    # Grounding-gate rejections are preserved
-    # as advisory concerns.
     evaluation[
         "advisory_findings"
     ] = (
-        model_advisories
-        + downgraded_advisories
+        validated_advisories
     )
-
 
     evaluation[
         "review_notes"
     ] = (
         model_review_notes
-        + grounding_review_notes
+        + compliance_review_notes
+        + requirement_review_notes
+        + advisory_review_notes
     )
-
 
     evaluation[
         "heuristic_composite_score"
-    ] = calculate_heuristic_score(
-        evaluation
+    ] = (
+        calculate_heuristic_score(
+            evaluation
+        )
     )
-
 
     blocking_count = len(
         compliance_findings
     )
 
+    requirement_count = len(
+        requirement_findings
+    )
 
     evaluation[
         "blocking_compliance_issue_count"
-    ] = blocking_count
-
+    ] = (
+        blocking_count
+    )
 
     evaluation[
         "compliance_status"
@@ -1317,6 +1725,83 @@ def parse_evaluation_response(
         "NO_BLOCKING_ISSUES_DETECTED"
     )
 
+    evaluation[
+        "requirement_finding_count"
+    ] = (
+        requirement_count
+    )
+
+    # Compatibility / experiment alias.
+    evaluation[
+        "requirement_missing_count"
+    ] = (
+        requirement_count
+    )
+
+    evaluation[
+        "requirement_status"
+    ] = (
+        "REQUIREMENTS_MISSING"
+
+        if requirement_count > 0
+
+        else
+        "NO_REQUIREMENTS_MISSING"
+    )
+
+    evaluation[
+        "mandatory_action_count"
+    ] = (
+        blocking_count
+        + requirement_count
+    )
+
+    if (
+        blocking_count > 0
+        and requirement_count > 0
+    ):
+
+        mandatory_action_status = (
+            "COMPLIANCE_AND_REQUIREMENT_ACTION"
+        )
+
+    elif blocking_count > 0:
+
+        mandatory_action_status = (
+            "COMPLIANCE_ACTION"
+        )
+
+    elif requirement_count > 0:
+
+        mandatory_action_status = (
+            "REQUIREMENT_ACTION"
+        )
+
+    else:
+
+        mandatory_action_status = (
+            "NO_MANDATORY_ACTION"
+        )
+
+    evaluation[
+        "mandatory_action_status"
+    ] = (
+        mandatory_action_status
+    )
+
+    evaluation[
+        "content_origin"
+    ] = (
+        normalized_origin
+    )
+
+    evaluation[
+        "structured_requirement_count"
+    ] = (
+        len(
+            normalized_requirements
+        )
+    )
 
     return evaluation
 
@@ -1331,26 +1816,14 @@ def evaluate_content(
     generated_content: str,
     policy_context: str = "",
     judge_model_key: str | None = None,
+    requirements=None,
+    content_origin: str = "generated",
 ) -> dict:
     """
-    Policy-grounded marketing content review.
+    GrowthPilot Evaluation Architecture v2.2.
 
-    Separates:
-
-    1. Blocking Compliance Findings
-       Direct, source-grounded conflicts only.
-
-    2. Advisory Findings
-       Subjective quality issues,
-       unsupported claims,
-       uncertain risks,
-       inference-dependent concerns.
-
-    3. Diagnostic Scores
-       Continuous descriptive signals only.
-
-    Python performs deterministic provenance
-    validation after the LLM returns.
+    Existing callers remain valid because the v2 parameters
+    are optional.
     """
 
     selected_judge = (
@@ -1358,12 +1831,10 @@ def evaluate_content(
         or JUDGE_MODEL_KEY
     )
 
-
     policy_context = (
         policy_context
         or ""
     ).strip()
-
 
     policy_context_display = (
         policy_context
@@ -1374,18 +1845,91 @@ def evaluate_content(
         "No additional external policy was provided."
     )
 
+    normalized_requirements = (
+        normalize_requirements(
+            requirements
+        )
+    )
+
+    requirements_display = (
+        format_requirements_for_prompt(
+            normalized_requirements
+        )
+    )
+
+    normalized_origin = (
+        normalize_content_origin(
+            content_origin
+        )
+    )
+
+    if (
+        normalized_origin
+        == "creator_draft"
+    ):
+
+        origin_instruction = """
+The submitted content is CREATOR-AUTHORED / CREATOR-SUBMITTED.
+
+Do NOT assume a first-person experience, opinion or endorsement is fabricated
+merely because Brand Information does not independently prove that the Creator
+experienced it.
+
+Examples that are NOT automatically authenticity violations:
+
+- "我最近在用..."
+- "I really like this workflow"
+- "Honestly kinda obsessed with this workflow rn!!!"
+
+Still review factual product claims, efficacy claims, guarantees, statistics
+and technical specifications normally.
+""".strip()
+
+    elif (
+        normalized_origin
+        == "generated"
+    ):
+
+        origin_instruction = """
+The submitted content may be AI-generated.
+
+Unsupported factual claims or newly invented first-person experiences may be
+Advisory concerns when appropriate, but only direct supplied-rule conflicts
+may be Blocking.
+""".strip()
+
+    else:
+
+        origin_instruction = """
+The content origin is unknown.
+
+Do not assume first-person experience is fabricated solely because it is absent
+from Brand Information. Evaluate factual and policy claims from the supplied
+sources.
+""".strip()
 
     prompt = f"""
-You are a strict AI marketing content reviewer.
+You are a strict AI marketing content reviewer for GrowthPilot.
 
-Your task is to evaluate ONLY the actual
-GENERATED CONTENT.
+Evaluate ONLY the actual SUBMITTED CONTENT.
 
-You must carefully separate:
+Separate four layers:
 
 1. BLOCKING COMPLIANCE FINDINGS
-2. NON-BLOCKING ADVISORY FINDINGS
-3. DIAGNOSTIC SCORES
+2. MANDATORY REQUIREMENT FINDINGS
+3. NON-BLOCKING ADVISORY FINDINGS
+4. DIAGNOSTIC SCORES
+
+There is NO numerical acceptance threshold.
+
+
+============================================================
+CONTENT ORIGIN
+============================================================
+
+{normalized_origin}
+
+{origin_instruction}
 
 
 ============================================================
@@ -1410,464 +1954,328 @@ ADDITIONAL POLICY CONTEXT
 
 
 ============================================================
-GENERATED CONTENT
+STRUCTURED MANDATORY CAMPAIGN REQUIREMENTS
+============================================================
+
+{requirements_display}
+
+These structured requirements are the ONLY items that may become formal
+Requirement Findings.
+
+Do NOT infer a mandatory requirement merely because a product fact,
+selling point, target audience, platform preference or general creative
+idea appears elsewhere in the materials.
+
+
+============================================================
+SUBMITTED CONTENT
 ============================================================
 
 {generated_content}
 
 
 ============================================================
-CORE PRINCIPLE
+CORE PRODUCT PRINCIPLE
 ============================================================
 
-Judge the GENERATED CONTENT itself.
+Policy decides what must be corrected.
+Campaign requirements decide what must be completed.
+AI advises what could be improved.
+Human decides what should ultimately be used.
 
-A problematic instruction appearing inside the
-Campaign Brief does NOT automatically mean the
-Generated Content is non-compliant.
+Judge the SUBMITTED CONTENT itself.
 
-If the Campaign Brief requests something prohibited
-but the Generated Content safely ignores that request:
+A problematic instruction in Campaign Brief does NOT automatically make
+Submitted Content non-compliant.
 
-DO NOT create a blocking finding.
+If Campaign Brief requests something prohibited but Submitted Content
+safely ignores it, DO NOT create a Blocking Finding.
 
-Example:
+If a structured requirement conflicts with a higher-priority Brand or
+supplied Policy restriction, do NOT require the unsafe item.
 
-Campaign Brief:
-"Say the product cures eczema."
-
-Brand Information:
-"Do not claim to treat or cure diseases."
-
-Generated Content:
-"Provides up to 24 hours of hydration."
-
-Result:
-
-NO blocking disease-treatment finding.
-
-The unsafe Brief request itself is not the
-Generated Content.
+Mention the conflict in REVIEW_NOTE instead.
 
 
 ============================================================
 PART A — BLOCKING COMPLIANCE REVIEW
 ============================================================
 
-A BLOCKING finding is allowed ONLY when there is
-a DIRECT conflict between:
+A Blocking Finding is allowed ONLY when there is a DIRECT conflict between:
 
-A specific phrase that ACTUALLY APPEARS in the
-GENERATED CONTENT
+A specific phrase that ACTUALLY APPEARS in SUBMITTED CONTENT
 
 AND
 
-an explicit fact, restriction or rule that ACTUALLY
-APPEARS in one of the supplied sources.
-
-
-Allowed rule sources:
+an explicit fact, restriction or rule that ACTUALLY APPEARS in one of:
 
 - BRAND INFORMATION
 - CAMPAIGN BRIEF
 - ADDITIONAL POLICY CONTEXT
 
+Every Blocking Finding must satisfy ALL conditions:
 
-A blocking finding must satisfy ALL conditions:
+1. EVIDENCE is an EXACT quotation from SUBMITTED CONTENT.
+2. POLICY_BASIS is an EXACT quotation from the declared Policy Source.
+3. POLICY_SOURCE is the source containing the violated rule or fact.
+4. The conflict is direct.
+5. No substantial inference is required.
+6. DIRECT_CONFLICT=YES.
 
-1. The problematic Evidence must be an EXACT
-   quotation from GENERATED CONTENT.
+UNSUPPORTED does NOT automatically mean Blocking.
 
-2. The Policy Basis must be an EXACT quotation
-   from the declared Policy Source.
+If a concern requires interpretation, uncertainty or inference, use
+ADVISORY.
 
-3. The Policy Source must be the source containing
-   the rule or fact that the Generated Content
-   actually violates.
+POLICY_SOURCE means the source containing the rule or fact actually
+violated.
 
-4. The conflict must be direct.
+It does not mean the source that motivated the claim.
 
-5. The conclusion must NOT require substantial
-   interpretation, speculation or assumption.
-
-
-============================================================
-WHAT "DIRECT CONFLICT" MEANS
-============================================================
-
-Examples of direct conflicts:
-
-Brand Information:
-"Provides up to 24 hours of hydration"
-
-Generated Content:
-"Provides 72 hours of hydration"
-
-This is DIRECT.
-
-
-Brand Information:
-"Do not claim to treat or cure diseases"
-
-Generated Content:
-"This product treats eczema"
-
-This is DIRECT.
-
-
-Brand Information:
-"Wired charging only"
-
-Generated Content:
-"Supports wireless charging"
-
-This is DIRECT.
-
-
-Additional Policy Context:
-"Do not use the word guaranteed"
-
-Generated Content:
-"Guaranteed results"
-
-This is DIRECT.
+Do NOT paraphrase EVIDENCE or POLICY_BASIS.
 
 
 ============================================================
-WHAT IS NOT AUTOMATICALLY BLOCKING
+PART B — MANDATORY REQUIREMENT COVERAGE
 ============================================================
 
-If the concern requires interpretation or inference,
-put it in ADVISORY instead.
+Requirement Findings are NOT Compliance Findings.
 
-Examples:
+Use REQUIREMENT only when a structured mandatory Campaign Requirement
+listed above is genuinely missing from Submitted Content.
 
-Generated Content:
-"My redness improved a lot"
+For MATCH_MODE=EXACT:
 
-Supplied rule:
-"Do not claim to cure diseases"
+- the required content must appear literally.
 
-Do NOT automatically call this a disease-treatment
-violation unless the generated wording itself
-explicitly makes that prohibited treatment or cure
-claim.
+For MATCH_MODE=SEMANTIC:
 
-It may still be:
-
-- an unsupported efficacy claim
-- an authenticity concern
-- a potentially sensitive claim
-
-Those belong in ADVISORY when there is no direct
-text-to-rule conflict.
-
-
-Generated Content:
-"I personally tried it and loved it"
-
-Supplied rule:
-"Do not guarantee medical results"
-
-Do NOT automatically treat personal satisfaction
-language as a guaranteed medical result.
-
-It may still create authenticity or support risk,
-which belongs in ADVISORY.
-
-
-Generated Content:
-"absorbs instantly"
-
-Brand Information:
-"lightweight"
-
-Do NOT infer that lightweight proves or disproves
-instant absorption.
-
-If no explicit supplied rule prohibits the claim
-and no supplied fact directly contradicts it,
-treat the concern as ADVISORY.
-
-
-============================================================
-UNSUPPORTED CLAIMS
-============================================================
-
-Unsupported claims may be important.
-
-Examples:
-
-- "absorbs instantly"
-- "will not pill under makeup"
-- "no irritating additives"
-- "redness improved"
-- "my skin barrier became much stronger"
-- invented personal experience
-
-However:
-
-UNSUPPORTED
-does NOT automatically mean
-BLOCKING COMPLIANCE VIOLATION.
-
-If the supplied materials do not contain an
-explicit rule or fact directly violated by the claim:
-
-put it in ADVISORY.
-
-The unsupported claim risk score may also be high.
-
-
-============================================================
-POLICY SOURCE RULE
-============================================================
-
-POLICY_SOURCE means:
-
-THE SOURCE CONTAINING THE RULE OR FACT
-THAT WAS VIOLATED.
-
-It does NOT mean:
-
-- the source that caused the model to make the claim
-- the source containing a bad request
-- the source providing campaign motivation
-
+- equivalent meaning is sufficient;
+- do NOT mark it missing merely because exact words are absent.
 
 Example:
 
-CAMPAIGN BRIEF:
-"Say the product cures sensitive skin problems."
+Requirement:
+Portable design
 
-BRAND INFORMATION:
-"Do not claim to treat or cure diseases."
+MATCH_MODE=SEMANTIC
 
-GENERATED CONTENT:
-"This product cures eczema."
+Submitted Content:
+"放包里基本没什么负担"
 
-The violated rule comes from:
+Result:
 
-BRAND INFORMATION
+Portability is already communicated.
 
-Therefore:
+Do NOT mark it missing just because "Portable design" is not written
+literally.
 
-POLICY_SOURCE=BRAND INFORMATION
+An omission has no problematic Evidence quotation.
 
-NOT:
+Therefore do NOT invent fake Evidence for Requirement Findings.
 
-POLICY_SOURCE=CAMPAIGN BRIEF
+Ground the finding using the structured REQUIREMENT_ID.
 
+Create a Requirement Finding only when:
 
-============================================================
-CAMPAIGN BRIEF CONFLICTS
-============================================================
+1. REQUIREMENT_ID exists in the structured list;
+2. the requirement is genuinely missing according to MATCH_MODE;
+3. the requirement does not conflict with higher-priority supplied rules.
 
-Brand restrictions and supplied policy restrictions
-take priority over conflicting creative requests
-inside the Campaign Brief.
+Do NOT turn an omission into Blocking Compliance.
 
-A Campaign Brief can only be used as a blocking
-Policy Source when:
+IMPORTANT:
 
-1. It contains an explicit mandatory factual or
-   operational requirement,
+Do NOT write a free-form replacement marketing claim for Requirement
+Required Action.
 
-AND
+Only output REQUIREMENT_ID and REASON.
 
-2. The Generated Content directly violates that
-   requirement,
-
-AND
-
-3. That requirement does not conflict with higher
-   priority Brand Information or supplied policy.
-
-Do NOT use a prohibited campaign request as the
-policy basis for declaring the final content unsafe.
+Python will create the mandatory action deterministically from the
+structured Requirement itself.
 
 
 ============================================================
-EVIDENCE RULE
+PART C — ADVISORY REVIEW
 ============================================================
 
-EVIDENCE must contain ONLY the exact problematic
-wording from GENERATED CONTENT.
-
-Do NOT include:
-
-- Campaign Brief text
-- Brand Information text
-- explanations
-- parenthetical comments
-- your interpretation
-- multiple sources joined by "/"
-- paraphrased content
-
-Bad:
-
-EVIDENCE=Campaign asks for cure / user says redness improved
-
-Good:
-
-EVIDENCE=之前动不动就泛红刺痛的情况真的少了好多
-
-
-============================================================
-POLICY BASIS RULE
-============================================================
-
-POLICY_BASIS must be copied directly from the
-declared Policy Source.
-
-Do NOT paraphrase.
-
-Do NOT combine multiple different rules into a
-new sentence.
-
-Do NOT explain the rule inside POLICY_BASIS.
-
-If one piece of content directly violates multiple
-rules, either:
-
-- choose the clearest governing rule
-
-or
-
-- create separate findings.
-
-
-Example:
-
-Brand Information contains:
-
-Do not claim to treat or cure diseases
-
-Then use exactly:
-
-POLICY_BASIS=Do not claim to treat or cure diseases
-
-Do NOT write:
-
-POLICY_BASIS=The brand prohibits medical treatment
-claims and disease claims.
-
-
-============================================================
-DIRECT CONFLICT FLAG
-============================================================
-
-Every proposed blocking finding must include:
-
-DIRECT_CONFLICT=YES
-
-ONLY use YES when:
-
-- the Evidence is in Generated Content
-- the Policy Basis is in the stated source
-- the wording directly conflicts with that rule
-- no substantial inference is required
-
-If substantial inference is needed:
-
-DO NOT create a Compliance Finding.
-
-Create an Advisory Finding instead.
-
-
-============================================================
-BLOCKING FINDING FIELDS
-============================================================
-
-Every blocking finding must contain:
-
-DIRECT_CONFLICT
-Use:
-
-YES
-
-EVIDENCE
-Exact quotation from Generated Content.
-
-POLICY_SOURCE
-Exactly one of:
-
-BRAND INFORMATION
-CAMPAIGN BRIEF
-ADDITIONAL POLICY CONTEXT
-
-POLICY_BASIS
-Exact quotation from that source.
-
-REASON
-Explain the direct text-to-rule conflict.
-
-REQUIRED_ACTION
-Explain the minimum necessary correction.
-
-
-============================================================
-PART B — ADVISORY REVIEW
-============================================================
-
-Use ADVISORY for useful concerns that should not
-be treated as hard blocking decisions.
-
-Examples include:
+Use ADVISORY for useful non-blocking concerns such as:
 
 - brand tone
+- creator fit
 - platform fit
 - communication quality
-- selling-point coverage
-- unsupported product claims
-- unsupported performance claims
-- invented personal experience
-- authenticity concerns
-- wording that may create compliance risk
-  but lacks enough supplied evidence
-- inference-dependent medical or efficacy concerns
-- possible sensitive wording
-- approximate length issues
+- optional selling-point coverage
+- unsupported but not directly prohibited claims
+- uncertain risk
+- approximate length
 - hard-sell language
-- any concern where the evidence-to-policy
-  connection is uncertain
+- wording quality
 
-Do NOT force issues into predefined categories.
+Do NOT force concerns into a closed taxonomy.
 
 AREA is open-ended.
 
+When CONTENT ORIGIN is creator_draft:
+
+Do NOT call first-person language fabricated merely because supplied
+materials do not prove the Creator's personal experience.
+
+The first-person form itself is not an authenticity violation.
+
+You may still review a factual, efficacy, guarantee, safety or technical
+claim inside that first-person statement.
+
 
 ============================================================
-PART C — DIAGNOSTIC SCORES
+ADVISORY PROVENANCE
 ============================================================
 
-Score:
+Every Advisory must declare BASIS_TYPE as one of:
+
+SUPPLIED_CONTEXT
+GENERAL_HEURISTIC
+
+Use SUPPLIED_CONTEXT ONLY when an exact supplied quote DIRECTLY SUPPORTS
+the actual Advisory conclusion.
+
+This is stricter than topical relevance.
+
+A source merely mentioning the same brand, product, platform, audience or
+topic is NOT enough.
+
+Example:
+
+Source:
+
+"AeroBottle is an active-lifestyle drinkware brand."
+
+This does NOT by itself support:
+
+"The Creator must explicitly name AeroBottle in the caption."
+
+That recommendation relies on a general marketing convention, so use:
+
+BASIS_TYPE=GENERAL_HEURISTIC
+
+
+Example:
+
+Source:
+
+"Its communication should be clear, technical, and useful without
+exaggeration."
+
+Submitted Content uses strongly promotional hype language.
+
+This quote directly supports a Tone Advisory, so use:
+
+BASIS_TYPE=SUPPLIED_CONTEXT
+
+
+When BASIS_TYPE=SUPPLIED_CONTEXT:
+
+- BASIS_SOURCE must be one allowed supplied source;
+- BASIS_QUOTE must be an exact quotation from that source;
+- the quote must directly support the Advisory conclusion.
+
+Use GENERAL_HEURISTIC when advice comes from general marketing, platform,
+copywriting or model knowledge rather than an explicit supplied statement.
+
+Do NOT present a general heuristic as supplied policy.
+
+
+============================================================
+ADVISORY SUGGESTION SAFETY — v2.2
+============================================================
+
+ADVISORY_SUGGESTION must be an EDIT ACTION only.
+
+It must describe WHAT TO CHANGE, not WRITE THE NEW MARKETING COPY.
+
+Do NOT provide:
+
+- example replacement sentences
+- example captions
+- example hooks
+- quoted rewrite text
+- newly composed promotional phrases
+- new numerical claims
+- new product benefits
+- new creator experiences
+- stronger promises
+
+Do NOT use phrases such as:
+
+- "for example: ..."
+- "e.g. ..."
+- "say: ..."
+- "write: ..."
+- "replace with: ..."
+- "add: <new promotional sentence>"
+
+unless the requested addition is a literal supplied EXACT requirement.
+
+For normal Advisory Findings, prefer short action guidance such as:
+
+- Reduce casual slang and emojis to better match the supplied professional tone.
+- Make the specification-focused structure clearer using only verified product facts already supplied.
+- Improve readability with shorter sentences or clearer structure.
+- Remove or soften the unsupported outcome claim without replacing it with a new benefit.
+- Consider mentioning an optional verified selling point only if it fits naturally.
+
+The suggestion itself must NOT become a second content-generation channel.
+
+A good Advisory identifies the issue and gives a bounded editing direction.
+
+It does NOT draft the user's final marketing sentence.
+
+Do NOT introduce or recommend inventing:
+
+- new product facts
+- new product functions
+- guarantees
+- unsupported efficacy claims
+- unsupported performance outcomes
+- medical or health outcomes
+- certifications or research
+- new Creator traits
+- new Creator personal experiences
+- unsupported usage duration
+- unsupported battery or performance guarantees
+
+If a safe action cannot be stated without inventing content, use conservative
+action guidance only.
+
+
+============================================================
+PART D — DIAGNOSTIC SCORES
+============================================================
+
+Score each from 1 to 10:
 
 BRAND_ALIGNMENT
-1 = very poor
-10 = excellent
-
 TONE_MATCH
-1 = very poor
-10 = excellent
-
 SELLING_POINT_COVERAGE
-1 = very poor
-10 = excellent
-
 FACTUAL_CONSISTENCY
+UNSUPPORTED_CLAIM_RISK
+
+For the first four:
+
 1 = very poor
 10 = excellent
 
-UNSUPPORTED_CLAIM_RISK
+For UNSUPPORTED_CLAIM_RISK:
+
 1 = very low risk
 10 = very high risk
 
-These scores are diagnostic signals only.
+These scores are descriptive signals only.
 
 They do NOT determine:
 
 - compliance
+- requirement completion
 - pass/fail
 - auto-revision
 
@@ -1888,6 +2296,7 @@ Return simple KEY=VALUE lines only.
 
 Every value must stay on ONE line.
 
+
 Start with:
 
 BEGIN_EVALUATION
@@ -1907,29 +2316,42 @@ Then:
 COMPLIANCE_COUNT=number
 
 
-For every blocking finding:
+For every Blocking Finding:
 
 COMPLIANCE_1_DIRECT_CONFLICT=YES
-COMPLIANCE_1_EVIDENCE=exact quotation from Generated Content
+COMPLIANCE_1_EVIDENCE=exact quotation from Submitted Content
 COMPLIANCE_1_POLICY_SOURCE=BRAND INFORMATION
-COMPLIANCE_1_POLICY_BASIS=exact quotation from the stated source
+COMPLIANCE_1_POLICY_BASIS=exact quotation from stated source
 COMPLIANCE_1_REASON=direct conflict explanation
 COMPLIANCE_1_REQUIRED_ACTION=minimum necessary correction
 
 
-Additional findings:
+Continue numbering when needed.
 
-COMPLIANCE_2_DIRECT_CONFLICT=YES
-COMPLIANCE_2_EVIDENCE=...
-COMPLIANCE_2_POLICY_SOURCE=...
-COMPLIANCE_2_POLICY_BASIS=...
-COMPLIANCE_2_REASON=...
-COMPLIANCE_2_REQUIRED_ACTION=...
-
-
-If there are no valid direct blocking findings:
+If none:
 
 COMPLIANCE_COUNT=0
+
+
+Then:
+
+REQUIREMENT_COUNT=number
+
+
+For every missing structured Requirement:
+
+REQUIREMENT_1_REQUIREMENT_ID=R1
+REQUIREMENT_1_REASON=why the structured requirement is missing
+
+
+Do NOT output REQUIREMENT REQUIRED_ACTION.
+
+Python generates it deterministically.
+
+
+If none:
+
+REQUIREMENT_COUNT=0
 
 
 Then:
@@ -1937,15 +2359,24 @@ Then:
 ADVISORY_COUNT=number
 
 
-For advisory findings:
+For every Advisory:
 
 ADVISORY_1_AREA=open-ended review area
-ADVISORY_1_EVIDENCE=relevant wording or blank
+ADVISORY_1_EVIDENCE=relevant Submitted Content wording or blank
 ADVISORY_1_REASON=why this deserves attention
-ADVISORY_1_SUGGESTION=optional improvement
+ADVISORY_1_SUGGESTION=short edit action only; no example rewrite or new marketing sentence
+ADVISORY_1_BASIS_TYPE=SUPPLIED_CONTEXT or GENERAL_HEURISTIC
+ADVISORY_1_BASIS_SOURCE=BRAND INFORMATION or CAMPAIGN BRIEF or ADDITIONAL POLICY CONTEXT or blank
+ADVISORY_1_BASIS_QUOTE=exact supplied-source quotation or blank
 
 
-Continue numbering as needed.
+For GENERAL_HEURISTIC use blank BASIS_SOURCE and BASIS_QUOTE.
+
+For ADVISORY_SUGGESTION:
+
+- give an action, not replacement copy;
+- do not include example wording;
+- do not introduce a new fact or claim.
 
 
 If none:
@@ -1978,31 +2409,35 @@ END_EVALUATION
 FINAL INSTRUCTION
 ============================================================
 
-Judge ONLY the Generated Content.
+Judge ONLY Submitted Content.
 
-A bad instruction in the Campaign Brief does not
-make the final Generated Content bad if the model
-did not follow that instruction.
+A bad Campaign Brief instruction does not make final content bad when the
+content safely ignores it.
 
-When uncertain between BLOCKING and ADVISORY:
+A missing structured Requirement is a REQUIREMENT FINDING, not Blocking
+Compliance.
 
-choose ADVISORY.
+When uncertain between BLOCKING and ADVISORY, choose ADVISORY.
 
-Blocking requires a direct,
-source-grounded conflict.
+Blocking requires a direct, source-grounded conflict.
+
+ADVISORY_SUGGESTION must be bounded edit guidance only.
+
+Never use it to generate new campaign copy, example rewrite sentences,
+unsupported numbers or new claims.
 
 Do not output commentary before BEGIN_EVALUATION.
 
 Do not output commentary after END_EVALUATION.
 """
 
-
-    response_text = generate_text(
-        prompt=prompt,
-        model_key=selected_judge,
-        temperature=0.0,
+    response_text = (
+        generate_text(
+            prompt=prompt,
+            model_key=selected_judge,
+            temperature=0.0,
+        )
     )
-
 
     evaluation = (
         parse_evaluation_response(
@@ -2011,48 +2446,45 @@ Do not output commentary after END_EVALUATION.
             brand_info=brand_info,
             campaign_brief=campaign_brief,
             policy_context=policy_context,
+            requirements=normalized_requirements,
+            content_origin=normalized_origin,
         )
     )
 
-
     evaluation[
         "judge_model"
-    ] = selected_judge
-
+    ] = (
+        selected_judge
+    )
 
     return evaluation
 
 
 # =========================================================
-# Pairwise Response Parser
+# Pairwise Evaluation
 # =========================================================
 
 def parse_pairwise_response(
     response_text: str,
 ) -> dict:
-    """
-    Parse simple pairwise KEY=VALUE output.
-    """
+    """Parse simple pairwise KEY=VALUE output."""
 
-    parsed = parse_key_value_response(
-        response_text
+    parsed = (
+        parse_key_value_response(
+            response_text
+        )
     )
 
-
-    if "PREFERENCE" not in parsed:
-
-        preview = repr(
-            clean_response_text(
-                response_text
-            )[:500]
-        )
-
+    if (
+        "PREFERENCE"
+        not in parsed
+    ):
         raise ValueError(
             "Pairwise Judge response is missing "
             "PREFERENCE. "
-            f"Raw response preview: {preview}"
+            "Raw response preview: "
+            f"{clean_response_text(response_text)[:500]!r}"
         )
-
 
     preference = (
         parsed[
@@ -2062,16 +2494,23 @@ def parse_pairwise_response(
         .lower()
     )
 
+    if (
+        preference
+        == "a"
+    ):
 
-    if preference == "a":
+        normalized_preference = (
+            "A"
+        )
 
-        normalized_preference = "A"
+    elif (
+        preference
+        == "b"
+    ):
 
-
-    elif preference == "b":
-
-        normalized_preference = "B"
-
+        normalized_preference = (
+            "B"
+        )
 
     elif preference in {
         "tie",
@@ -2079,8 +2518,9 @@ def parse_pairwise_response(
         "same",
     }:
 
-        normalized_preference = "tie"
-
+        normalized_preference = (
+            "tie"
+        )
 
     else:
 
@@ -2088,7 +2528,6 @@ def parse_pairwise_response(
             "Pairwise Judge returned invalid "
             f"preference: {preference}"
         )
-
 
     return {
         "preference":
@@ -2108,10 +2547,6 @@ def parse_pairwise_response(
     }
 
 
-# =========================================================
-# Pairwise Evaluation
-# =========================================================
-
 def compare_contents_pairwise(
     brand_info: str,
     campaign_brief: str,
@@ -2121,11 +2556,10 @@ def compare_contents_pairwise(
     judge_model_key: str | None = None,
 ) -> dict:
     """
-    Compare Content A and Content B without
-    using an absolute numerical threshold.
+    Compare two content versions without using a numerical
+    pass/fail threshold.
 
-    Pairwise evaluation remains separate from
-    the blocking compliance decision.
+    Kept backward-compatible with Benchmark A.
     """
 
     selected_judge = (
@@ -2133,12 +2567,10 @@ def compare_contents_pairwise(
         or JUDGE_MODEL_KEY
     )
 
-
     policy_context = (
         policy_context
         or ""
     ).strip()
-
 
     policy_context_display = (
         policy_context
@@ -2149,14 +2581,12 @@ def compare_contents_pairwise(
         "No additional external policy was provided."
     )
 
-
     prompt = f"""
-You are comparing two AI-generated
-marketing contents.
+You are comparing two marketing content versions.
 
 Judge the actual contents.
 
-Use ONLY the supplied information.
+Use ONLY supplied information.
 
 Do NOT invent:
 
@@ -2165,8 +2595,6 @@ Do NOT invent:
 - platform policies
 - product facts
 - brand rules
-
-from your own memory.
 
 
 ============================================================
@@ -2208,8 +2636,7 @@ CONTENT B
 COMPARISON TASK
 ============================================================
 
-Choose which content is better suited
-for actual use.
+Choose which content is better suited for actual use.
 
 Prioritize:
 
@@ -2221,20 +2648,13 @@ Prioritize:
 6. campaign suitability
 7. communication quality
 
+A problematic request in Campaign Brief does NOT make a version
+non-compliant if that version safely ignores the request.
 
-IMPORTANT:
+A concern requiring substantial inference should not be treated as a
+definitive policy violation.
 
-Judge the actual Content A and Content B.
-
-A problematic request appearing in the Campaign Brief
-does NOT make a content version non-compliant if that
-content safely ignores the request.
-
-A concern requiring substantial inference should
-not be treated as a definitive policy violation.
-
-However, unsupported or risky claims may still
-reduce the content's overall suitability.
+Unsupported or risky claims may still reduce overall suitability.
 
 Do not prefer a version merely because it is:
 
@@ -2259,6 +2679,7 @@ DO NOT return JSON.
 
 DO NOT use Markdown.
 
+
 Return exactly:
 
 BEGIN_PAIRWISE
@@ -2275,25 +2696,28 @@ B
 or
 tie
 
+
 Keep every value on one line.
 """
 
-
-    response_text = generate_text(
-        prompt=prompt,
-        model_key=selected_judge,
-        temperature=0.0,
+    response_text = (
+        generate_text(
+            prompt=prompt,
+            model_key=selected_judge,
+            temperature=0.0,
+        )
     )
 
-
-    result = parse_pairwise_response(
-        response_text
+    result = (
+        parse_pairwise_response(
+            response_text
+        )
     )
-
 
     result[
         "judge_model"
-    ] = selected_judge
-
+    ] = (
+        selected_judge
+    )
 
     return result

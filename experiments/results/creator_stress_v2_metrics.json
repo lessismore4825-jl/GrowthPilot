@@ -1,0 +1,111 @@
+{
+  "benchmark": "Creator Draft Compliance Stress Suite",
+  "evaluation_architecture": "v2.2",
+  "generator_used": false,
+  "reviser_used": false,
+  "numerical_quality_threshold_used": false,
+  "total_cases": 10,
+  "completed_case_panels": 10,
+  "total_expected_judge_calls": 20,
+  "successful_judge_calls": 20,
+  "compliance": {
+    "consensus_blocking_recall_for_auto_fix": 1.0,
+    "false_consensus_blocking_rate": 0.0,
+    "cross_judge_blocking_agreement_rate": 1.0,
+    "human_blocking_disagreement_rate": 0.0,
+    "negative_control_clear_rate": 1.0,
+    "advisory_only_clear_rate": 1.0,
+    "individual_judge_blocking_case_recall": 1.0,
+    "individual_judge_false_blocking_rate": 0.0,
+    "individual_judge_blocking_finding_recall": 1.0
+  },
+  "requirements": {
+    "structured_requirement_findings_supported": true,
+    "consensus_requirement_exact_case_recall": 1.0,
+    "false_consensus_requirement_action_rate": 0.0,
+    "cross_judge_requirement_agreement_rate": 1.0,
+    "individual_judge_requirement_case_recall": 1.0,
+    "individual_judge_false_requirement_case_rate": 0.0,
+    "individual_judge_requirement_finding_recall": 1.0,
+    "individual_judge_requirement_finding_precision": 1.0
+  },
+  "mandatory_routing": {
+    "routing_accuracy_on_complete_panels": 1.0,
+    "human_review_escalation_rate": 0.0
+  },
+  "creator_semantics": {
+    "controlled_case_ids": [
+      "STRESS_003",
+      "STRESS_008"
+    ],
+    "authenticity_regression_calls": 0,
+    "creator_semantics_clear_rate": 1.0,
+    "note": "Targeted regression diagnostic, not general authenticity accuracy."
+  },
+  "advisory_provenance": {
+    "total_advisory_findings": 31,
+    "supplied_context_count": 21,
+    "general_heuristic_count": 10,
+    "system_grounding_review_count": 0,
+    "other_basis_count": 0,
+    "provenance_relabel_count": 5,
+    "valid_known_basis_rate": 1.0,
+    "advisory_copy_like_suggestion_count": 0,
+    "advisory_copy_like_suggestion_rate": 0.0,
+    "note": "Copy-like suggestion detection is heuristic diagnostic only."
+  },
+  "per_judge": {
+    "step": {
+      "successful_calls": 10,
+      "blocking_case_recall": 1.0,
+      "false_blocking_rate": 0.0,
+      "blocking_finding_recall": 1.0,
+      "requirement_case_recall": 1.0,
+      "false_requirement_case_rate": 0.0,
+      "requirement_finding_recall": 1.0,
+      "requirement_finding_precision": 1.0,
+      "creator_semantics_clear_rate": 1.0,
+      "median_evaluation_latency_seconds": 47.96,
+      "avg_evaluation_latency_seconds": 46.64,
+      "retry_call_count": 0
+    },
+    "qwen": {
+      "successful_calls": 10,
+      "blocking_case_recall": 1.0,
+      "false_blocking_rate": 0.0,
+      "blocking_finding_recall": 1.0,
+      "requirement_case_recall": 1.0,
+      "false_requirement_case_rate": 0.0,
+      "requirement_finding_recall": 1.0,
+      "requirement_finding_precision": 1.0,
+      "creator_semantics_clear_rate": 1.0,
+      "median_evaluation_latency_seconds": 53.97,
+      "avg_evaluation_latency_seconds": 144.05,
+      "retry_call_count": 1
+    }
+  },
+  "baseline_comparison": {
+    "available": true,
+    "consensus_blocking_recall_for_auto_fix": {
+      "baseline": 1.0,
+      "v2": 1.0
+    },
+    "false_consensus_blocking_rate": {
+      "baseline": 0.0,
+      "v2": 0.0
+    },
+    "cross_judge_blocking_agreement_rate": {
+      "baseline": 1.0,
+      "v2": 1.0
+    },
+    "individual_judge_blocking_finding_recall": {
+      "baseline": 0.9167,
+      "v2": 1.0
+    },
+    "formal_requirement_finding_recall": {
+      "baseline": null,
+      "v2": 1.0,
+      "baseline_interpretation": "N/A: baseline had no structured Requirement layer."
+    }
+  }
+}
