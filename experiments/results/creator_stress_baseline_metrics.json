@@ -1,0 +1,43 @@
+{
+  "benchmark": "Creator Draft Stress Baseline",
+  "baseline_system": "Frozen evaluator.py before structured Requirement Findings",
+  "total_cases": 10,
+  "completed_case_panels": 10,
+  "total_expected_judge_calls": 20,
+  "successful_judge_calls": 20,
+  "gold_blocking_cases_in_complete_panels": 5,
+  "gold_nonblocking_cases_in_complete_panels": 5,
+  "consensus_blocking_recall_for_auto_fix": 1.0,
+  "false_consensus_blocking_rate": 0.0,
+  "cross_judge_blocking_agreement_rate": 1.0,
+  "human_review_escalation_rate": 0.0,
+  "negative_control_clear_rate": 1.0,
+  "advisory_only_clear_rate": 1.0,
+  "individual_judge_blocking_case_recall": 1.0,
+  "individual_judge_false_blocking_rate": 0.0,
+  "individual_judge_blocking_finding_recall": 0.9167,
+  "requirement_coverage_baseline": {
+    "structured_requirement_findings_supported": false,
+    "formal_requirement_detection_rate": null,
+    "reason": "The frozen evaluator has no requirement_findings output schema. Missing Must-Mention items may only surface indirectly as Advisory or Selling Point Coverage.",
+    "legacy_advisory_signal_calls": 2,
+    "legacy_advisory_signal_total_successful_calls": 2,
+    "note": "Legacy advisory signal is diagnostic only and must not be presented as formal Requirement Accuracy."
+  },
+  "per_judge": {
+    "step": {
+      "successful_calls": 10,
+      "blocking_case_recall": 1.0,
+      "false_blocking_rate": 0.0,
+      "blocking_finding_recall": 0.8333,
+      "avg_evaluation_latency_seconds": 44.06
+    },
+    "qwen": {
+      "successful_calls": 10,
+      "blocking_case_recall": 1.0,
+      "false_blocking_rate": 0.0,
+      "blocking_finding_recall": 1.0,
+      "avg_evaluation_latency_seconds": 39.66
+    }
+  }
+}

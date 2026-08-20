@@ -1,0 +1,441 @@
+{
+  "benchmark_name": "Creator Draft Compliance Stress Suite",
+  "benchmark_version": "1.0",
+  "benchmark_type": "controlled_creator_draft_stress_test",
+  "description": "A synthetic but realistic benchmark for testing GrowthPilot's ability to review creator-submitted campaign content. The suite separates hard blocking issues, campaign requirement coverage, quality advisories, and clean negative controls.",
+  "design_principles": [
+    "All brands, products, creators, and campaign materials are synthetic.",
+    "Blocking findings must be grounded in explicit supplied product facts or policy constraints.",
+    "Missing required campaign information is evaluated separately from compliance blocking.",
+    "Subjective quality issues such as tone and creator fit are advisory rather than blocking unless an explicit rule is supplied.",
+    "Negative controls are included to measure false blocking behavior.",
+    "A problematic campaign brief does not make the final creator draft blocking when the creator safely ignores the problematic instruction."
+  ],
+  "cases": [
+    {
+      "case_id": "STRESS_001",
+      "scenario_name": "Direct Disease Treatment Claim",
+      "scenario_type": "blocking",
+      "brand_info": "LumiSkin is a modern skincare brand focused on simple, barrier-supportive daily skincare. The brand communicates in a calm, professional, trustworthy, and modern tone. LumiSkin does not position its cosmetic products as medical treatments.",
+      "product_info": "Product: LumiSkin Barrier Repair Moisturizer. Key ingredients: ceramides and hyaluronic acid. Designed for dry and sensitive skin. Lightweight and non-greasy texture. Provides up to 24 hours of hydration.",
+      "campaign_brief": "Create a Xiaohongshu creator post introducing LumiSkin Barrier Repair Moisturizer as part of a simple daily skincare routine for young consumers with dry or sensitive skin.",
+      "creator_profile": {
+        "creator_category": "Beauty",
+        "audience": "Women aged 20-30 interested in skincare",
+        "creator_style": "Personal skincare diary, relaxed and experience-driven",
+        "content_characteristics": "First-person recommendation with everyday skincare scenarios"
+      },
+      "platform": "Xiaohongshu",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Ceramides or hyaluronic acid",
+        "Up to 24 hours of hydration"
+      ],
+      "must_avoid": [
+        "Disease-treatment claims",
+        "Guaranteed medical results"
+      ],
+      "additional_policy_context": "Do not claim that the product treats or cures eczema, dermatitis, or any other disease. Do not describe the moisturizer as a medical treatment.",
+      "creator_draft": "最近换季皮肤状态很不稳定，我用了 LumiSkin 一段时间之后最大的感受就是它真的把我的湿疹治好了。神经酰胺和透明质酸的搭配也很适合日常保湿，一次可以维持最长24小时，肤感不会很厚重。",
+      "gold": {
+        "blocking_expected": true,
+        "expected_blocking_issue_count": 1,
+        "blocking_issues": [
+          {
+            "issue_id": "B001",
+            "issue_type": "DISEASE_TREATMENT_CLAIM",
+            "evidence": "它真的把我的湿疹治好了",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "Do not claim that the product treats or cures eczema, dermatitis, or any other disease.",
+            "required_action": "Remove the disease-treatment statement and retain only explicitly supported skincare information."
+          }
+        ],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "MANDATORY_FIX"
+      }
+    },
+    {
+      "case_id": "STRESS_002",
+      "scenario_name": "Incorrect Numerical Specification and Invented Capability",
+      "scenario_type": "blocking",
+      "brand_info": "VoltGo is a practical consumer electronics brand. Its communication should be clear, technical, and useful without exaggeration.",
+      "product_info": "Product: VoltGo Mini Power Bank. Capacity: 10,000mAh. Maximum wired charging output: 20W. Weight: 180g. Two USB-C ports. Wired charging only. Wireless charging is not supported.",
+      "campaign_brief": "Create a short Douyin creator script introducing VoltGo Mini as a portable charging option for commuters and students.",
+      "creator_profile": {
+        "creator_category": "Technology",
+        "audience": "Students and young professionals",
+        "creator_style": "Fast-paced practical product reviews",
+        "content_characteristics": "Short demonstrations and specification-focused explanations"
+      },
+      "platform": "Douyin",
+      "content_type": "Video Script / Voice-over",
+      "must_mention": [
+        "10,000mAh",
+        "Portable design"
+      ],
+      "must_avoid": [
+        "Changing technical specifications",
+        "Wireless charging claims"
+      ],
+      "additional_policy_context": "Maximum wired charging output is 20W. The product does not support wireless charging. Product specifications must not be changed or strengthened.",
+      "creator_draft": "最近通勤我一直带这个 VoltGo Mini，10,000mAh 但只有180克，放包里基本没什么负担。它支持30W有线快充，而且临时不想接线的时候还可以直接无线充电，学生党日常带一个真的很方便。",
+      "gold": {
+        "blocking_expected": true,
+        "expected_blocking_issue_count": 2,
+        "blocking_issues": [
+          {
+            "issue_id": "B002",
+            "issue_type": "INCORRECT_NUMERICAL_SPECIFICATION",
+            "evidence": "它支持30W有线快充",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "Maximum wired charging output is 20W.",
+            "required_action": "Replace 30W with the supported maximum wired output of 20W."
+          },
+          {
+            "issue_id": "B003",
+            "issue_type": "INVENTED_PRODUCT_CAPABILITY",
+            "evidence": "还可以直接无线充电",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "The product does not support wireless charging.",
+            "required_action": "Remove the wireless charging claim."
+          }
+        ],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "MANDATORY_FIX"
+      }
+    },
+    {
+      "case_id": "STRESS_003",
+      "scenario_name": "Invented Clinical Evidence",
+      "scenario_type": "blocking",
+      "brand_info": "PureCalm is a gentle skincare brand focused on simple daily cleansing for sensitive skin. The brand communicates carefully and avoids unsupported scientific or medical claims.",
+      "product_info": "Product: PureCalm Gentle Cleanser. Fragrance-free formula. Designed for daily facial cleansing. Contains glycerin. No clinical study, dermatologist certification, or user-percentage study has been supplied for this campaign.",
+      "campaign_brief": "Create an educational Xiaohongshu post introducing a simple evening cleansing routine.",
+      "creator_profile": {
+        "creator_category": "Skincare Education",
+        "audience": "Consumers interested in gentle skincare",
+        "creator_style": "Ingredient-focused and educational",
+        "content_characteristics": "Explains products through simple skincare knowledge"
+      },
+      "platform": "Xiaohongshu",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Fragrance-free",
+        "Glycerin"
+      ],
+      "must_avoid": [
+        "Invented clinical studies",
+        "Invented dermatologist certification",
+        "Invented user statistics"
+      ],
+      "additional_policy_context": "No clinical study results, dermatologist certification, or user-percentage efficacy data have been provided. Do not invent such evidence.",
+      "creator_draft": "敏感肌晚间清洁我最近会用 PureCalm Gentle Cleanser，无香精配方加上甘油，整体思路比较简单。更让我放心的是，临床测试显示95%的用户使用后敏感泛红明显改善，所以敏感期也可以放心用。",
+      "gold": {
+        "blocking_expected": true,
+        "expected_blocking_issue_count": 1,
+        "blocking_issues": [
+          {
+            "issue_id": "B004",
+            "issue_type": "INVENTED_CLINICAL_EVIDENCE",
+            "evidence": "临床测试显示95%的用户使用后敏感泛红明显改善",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "No clinical study results, dermatologist certification, or user-percentage efficacy data have been provided.",
+            "required_action": "Remove the invented clinical-study and user-percentage claim."
+          }
+        ],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "MANDATORY_FIX"
+      }
+    },
+    {
+      "case_id": "STRESS_004",
+      "scenario_name": "Absolute Product Guarantee",
+      "scenario_type": "blocking",
+      "brand_info": "NorthNote develops AI tools for professional teams. Its communication style is professional, precise, calm, and credible.",
+      "product_info": "Product: NorthNote AI Meeting Notes. Features include automatic meeting summaries, action-item extraction, searchable meeting history, and team knowledge organization.",
+      "campaign_brief": "Create a LinkedIn creator post introducing NorthNote to managers and professional teams who spend significant time in meetings.",
+      "creator_profile": {
+        "creator_category": "B2B Productivity",
+        "audience": "Managers, consultants, and professional teams",
+        "creator_style": "Practical business productivity advice",
+        "content_characteristics": "Professional posts using workplace examples"
+      },
+      "platform": "LinkedIn",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Automatic meeting summaries",
+        "Action-item extraction"
+      ],
+      "must_avoid": [
+        "100% accuracy guarantees",
+        "Guarantees that nothing will ever be missed"
+      ],
+      "additional_policy_context": "Do not claim 100% accuracy. Do not guarantee that NorthNote will ensure no action item, decision, or meeting detail is ever missed.",
+      "creator_draft": "NorthNote automatically summarizes meetings and extracts action items, which can make follow-up much easier for busy teams. Most importantly, it guarantees that your team will never miss another action item or important decision again.",
+      "gold": {
+        "blocking_expected": true,
+        "expected_blocking_issue_count": 1,
+        "blocking_issues": [
+          {
+            "issue_id": "B005",
+            "issue_type": "ABSOLUTE_GUARANTEE",
+            "evidence": "it guarantees that your team will never miss another action item or important decision again",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "Do not guarantee that NorthNote will ensure no action item, decision, or meeting detail is ever missed.",
+            "required_action": "Remove the absolute guarantee while preserving the supported product capabilities."
+          }
+        ],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "MANDATORY_FIX"
+      }
+    },
+    {
+      "case_id": "STRESS_005",
+      "scenario_name": "Explicitly Prohibited Performance Claim",
+      "scenario_type": "blocking",
+      "brand_info": "BeanTrail is a modern coffee brand positioned around convenient everyday coffee routines. Its tone is friendly, relaxed, and contemporary.",
+      "product_info": "Product: BeanTrail Cold Brew Concentrate. Made with 100% Arabica coffee. No added sugar. Approximately 8 servings per bottle. Can be mixed with water or milk.",
+      "campaign_brief": "Create a Xiaohongshu student lifestyle post showing how BeanTrail can fit into a busy morning routine.",
+      "creator_profile": {
+        "creator_category": "Student Lifestyle",
+        "audience": "University students",
+        "creator_style": "Casual daily routine sharing",
+        "content_characteristics": "Dorm life, study routines, and everyday recommendations"
+      },
+      "platform": "Xiaohongshu",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "100% Arabica",
+        "No added sugar"
+      ],
+      "must_avoid": [
+        "Concentration improvement claims",
+        "Academic performance claims",
+        "Weight-loss or health claims"
+      ],
+      "additional_policy_context": "Do not claim that the product improves concentration, memory, academic performance, exam results, weight loss, or health outcomes.",
+      "creator_draft": "早八的时候我最近会直接用 BeanTrail 冷萃浓缩液兑水，100% Arabica 而且没有额外加糖，准备起来很方便。考试周喝它之后专注力真的明显提升，复习效率至少翻了一倍。",
+      "gold": {
+        "blocking_expected": true,
+        "expected_blocking_issue_count": 1,
+        "blocking_issues": [
+          {
+            "issue_id": "B006",
+            "issue_type": "PROHIBITED_PERFORMANCE_CLAIM",
+            "evidence": "考试周喝它之后专注力真的明显提升，复习效率至少翻了一倍",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "Do not claim that the product improves concentration, memory, academic performance, exam results, weight loss, or health outcomes.",
+            "required_action": "Remove the concentration and academic-efficiency claims while preserving the supported product information."
+          }
+        ],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "MANDATORY_FIX"
+      }
+    },
+    {
+      "case_id": "STRESS_006",
+      "scenario_name": "Missing Campaign Must-Mention",
+      "scenario_type": "requirement_coverage",
+      "brand_info": "AeroBottle is an active-lifestyle drinkware brand. Communication should be clean, practical, and straightforward.",
+      "product_info": "Product: AeroBottle Pro. Capacity: 600ml. Stainless steel construction. Keeps drinks cold for up to 18 hours. Leak-resistant lid. Weight: 280g. BPA-free. Available in four colors.",
+      "campaign_brief": "Create a short Instagram creator caption for students and young professionals commuting to school or work.",
+      "creator_profile": {
+        "creator_category": "Urban Lifestyle",
+        "audience": "Students and young professionals",
+        "creator_style": "Minimal lifestyle recommendations",
+        "content_characteristics": "Short captions built around commuting and everyday carry"
+      },
+      "platform": "Instagram",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Up to 18 hours cold",
+        "BPA-free"
+      ],
+      "must_avoid": [
+        "Completely leak-proof",
+        "Health benefit claims"
+      ],
+      "additional_policy_context": "This campaign must mention that AeroBottle Pro keeps drinks cold for up to 18 hours and that it is BPA-free.",
+      "creator_draft": "My new everyday commute bottle: 600ml stainless steel, lightweight enough for my work bag, and keeps my water cold for up to 18 hours. The leak-resistant lid has also been really useful when I am moving between classes and work.",
+      "gold": {
+        "blocking_expected": false,
+        "expected_blocking_issue_count": 0,
+        "blocking_issues": [],
+        "required_missing": [
+          {
+            "requirement_id": "R001",
+            "requirement_type": "MISSING_MUST_MENTION",
+            "missing_item": "BPA-free",
+            "policy_source": "ADDITIONAL POLICY CONTEXT",
+            "policy_basis": "This campaign must mention that AeroBottle Pro keeps drinks cold for up to 18 hours and that it is BPA-free.",
+            "required_action": "Add the BPA-free product fact without changing the creator's overall style."
+          }
+        ],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": false,
+        "desired_product_action": "REQUIREMENT_REVISION"
+      }
+    },
+    {
+      "case_id": "STRESS_007",
+      "scenario_name": "Brand Tone Misalignment Without Factual Error",
+      "scenario_type": "advisory_only",
+      "brand_info": "Maison Verda is a premium botanical skincare brand. The brand aims to feel refined, calm, modern, and understated. Communication usually avoids hard-selling language and emphasizes thoughtful daily rituals.",
+      "product_info": "Product: Maison Verda Botanical Cleansing Balm. Removes makeup and daily impurities. Contains camellia oil. Soft balm texture that emulsifies with water.",
+      "campaign_brief": "Create a Xiaohongshu creator post introducing the cleansing balm as part of an evening skincare routine.",
+      "creator_profile": {
+        "creator_category": "Beauty",
+        "audience": "Young premium skincare consumers",
+        "creator_style": "Energetic beauty recommendations",
+        "content_characteristics": "Conversational product recommendations with strong hooks"
+      },
+      "platform": "Xiaohongshu",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Camellia oil",
+        "Emulsifies with water"
+      ],
+      "must_avoid": [],
+      "additional_policy_context": "Brand communication should feel refined, calm, modern, and understated. Tone preference is advisory unless an explicit factual or policy conflict exists.",
+      "creator_draft": "姐妹们这个卸妆膏真的给我冲！！！山茶花油加上遇水乳化的质地，晚上卸妆的时候用起来很方便。最近我的晚间护肤第一步基本就是它，懒人真的会爱死这种用法哈哈哈。",
+      "gold": {
+        "blocking_expected": false,
+        "expected_blocking_issue_count": 0,
+        "blocking_issues": [],
+        "required_missing": [],
+        "advisory_expected": true,
+        "advisory_focus": [
+          "The highly excited hard-selling tone may not match the brand's refined and understated positioning.",
+          "The creator voice can be preserved while softening the strongest promotional expressions."
+        ],
+        "negative_control": false,
+        "desired_product_action": "ADVISORY_ONLY"
+      }
+    },
+    {
+      "case_id": "STRESS_008",
+      "scenario_name": "Creator and Platform Style Mismatch",
+      "scenario_type": "advisory_only",
+      "brand_info": "NorthNote develops AI productivity tools for professional teams. Its brand communication is clear, credible, and practical.",
+      "product_info": "Product: NorthNote AI Meeting Notes. Automatic summaries, action-item extraction, searchable meeting history, and team knowledge organization.",
+      "campaign_brief": "Create a LinkedIn post introducing NorthNote to operations managers and consulting teams.",
+      "creator_profile": {
+        "creator_category": "Management Consultant",
+        "audience": "Operations leaders and consulting professionals",
+        "creator_style": "Structured professional insights",
+        "content_characteristics": "Business frameworks, concise workplace observations, and practical recommendations"
+      },
+      "platform": "LinkedIn",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Automatic summaries",
+        "Action-item extraction"
+      ],
+      "must_avoid": [],
+      "additional_policy_context": "Professional platform fit and creator-style fit should be evaluated as quality advisories unless an explicit hard rule is violated.",
+      "creator_draft": "POV: your meeting ends and you actually remember what happened 😂🔥 NorthNote makes automatic summaries and pulls out action items so your team does not have to dig through notes afterwards. Honestly kinda obsessed with this workflow rn!!!",
+      "gold": {
+        "blocking_expected": false,
+        "expected_blocking_issue_count": 0,
+        "blocking_issues": [],
+        "required_missing": [],
+        "advisory_expected": true,
+        "advisory_focus": [
+          "The highly casual social style is mismatched with the specified professional LinkedIn creator profile.",
+          "The core product facts remain supported and therefore should not be treated as blocking."
+        ],
+        "negative_control": false,
+        "desired_product_action": "ADVISORY_ONLY"
+      }
+    },
+    {
+      "case_id": "STRESS_009",
+      "scenario_name": "Unsafe Campaign Brief but Safe Creator Draft",
+      "scenario_type": "negative_control",
+      "brand_info": "LumiSkin is a modern skincare brand focused on simple daily skincare for dry and sensitive skin. The brand tone is calm, trustworthy, and professional.",
+      "product_info": "Product: LumiSkin Barrier Repair Moisturizer. Contains ceramides and hyaluronic acid. Lightweight and non-greasy. Provides up to 24 hours of hydration.",
+      "campaign_brief": "The campaign manager asks the creator to emphasize that the product can cure sensitive-skin problems and completely repair damaged skin.",
+      "creator_profile": {
+        "creator_category": "Beauty",
+        "audience": "Women aged 20-30 interested in skincare",
+        "creator_style": "Natural skincare recommendations",
+        "content_characteristics": "Daily routine content with moderate product explanation"
+      },
+      "platform": "Xiaohongshu",
+      "content_type": "Social Caption",
+      "must_mention": [
+        "Ceramides",
+        "Up to 24 hours of hydration"
+      ],
+      "must_avoid": [
+        "Disease-treatment claims",
+        "Guaranteed repair claims"
+      ],
+      "additional_policy_context": "Brand restrictions override conflicting campaign requests. Do not claim that the product cures skin conditions or guarantees complete skin repair.",
+      "creator_draft": "换季的时候我会更偏向简单一点的护肤步骤。LumiSkin 这款面霜里面有神经酰胺和透明质酸，质地比较轻盈不厚重，同时提供最长24小时保湿，我会把它放在日常基础保湿这一步。",
+      "gold": {
+        "blocking_expected": false,
+        "expected_blocking_issue_count": 0,
+        "blocking_issues": [],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": true,
+        "desired_product_action": "NO_MANDATORY_ACTION",
+        "special_test_objective": "The system must judge the final creator draft rather than treating the unsafe campaign request itself as evidence of a final-content violation."
+      }
+    },
+    {
+      "case_id": "STRESS_010",
+      "scenario_name": "Clean Creator Draft Negative Control",
+      "scenario_type": "negative_control",
+      "brand_info": "VoltGo is a practical consumer electronics brand. Its communication is technical, straightforward, and useful without exaggerated promises.",
+      "product_info": "Product: VoltGo Mini Power Bank. Capacity: 10,000mAh. Maximum wired charging output: 20W. Weight: 180g. Two USB-C ports. Wired charging only.",
+      "campaign_brief": "Create a Douyin creator script for students and young professionals who need portable charging during commuting and long days outside.",
+      "creator_profile": {
+        "creator_category": "Technology",
+        "audience": "Students and young professionals",
+        "creator_style": "Practical gadget recommendations",
+        "content_characteristics": "Concise demonstrations focused on daily usefulness"
+      },
+      "platform": "Douyin",
+      "content_type": "Video Script / Voice-over",
+      "must_mention": [
+        "10,000mAh",
+        "20W maximum wired output"
+      ],
+      "must_avoid": [
+        "Wireless charging claims",
+        "Charging output above 20W"
+      ],
+      "additional_policy_context": "Do not claim wireless charging. Do not claim charging output above the supported maximum wired output of 20W.",
+      "creator_draft": "如果你平时通勤时间比较长，可以看看这种小体积充电宝。VoltGo Mini 是10,000mAh，重量180克，最高支持20W有线输出，还有两个USB-C接口。我比较喜欢这种参数写得清楚、放包里也不会太占空间的产品。",
+      "gold": {
+        "blocking_expected": false,
+        "expected_blocking_issue_count": 0,
+        "blocking_issues": [],
+        "required_missing": [],
+        "advisory_expected": false,
+        "advisory_focus": [],
+        "negative_control": true,
+        "desired_product_action": "NO_MANDATORY_ACTION"
+      }
+    }
+  ]
+}
