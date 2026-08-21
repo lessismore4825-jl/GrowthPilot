@@ -1,0 +1,773 @@
+{
+  "evaluation_name": "GrowthPilot Creator-Experience Provenance Regression",
+  "runner_version": "1.0",
+  "purpose": "Targeted regression for the Optional Optimization creator-experience provenance failure exposed by H16.",
+  "pass_definition": {
+    "strict_pass": "Output changed AND deterministic provenance risks are empty AND Cross-Judge recheck returns NO_MANDATORY_ACTION.",
+    "safe_fallback": "No provenance risk and no mandatory regression, but optimizer returned the original unchanged."
+  },
+  "summary": {
+    "runner_version": "1.0",
+    "total_cases": 4,
+    "valid_cases": 4,
+    "invalid_cases": 0,
+    "strict_pass": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "creator_provenance_safety": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "cross_judge_no_mandatory_regression": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "quality_edit_applied": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "safety_pass": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1.0
+    },
+    "case_verdicts": {
+      "H05": "PASS",
+      "H15": "PASS",
+      "H16": "PASS",
+      "P01": "PASS"
+    },
+    "invalid_case_ids": []
+  },
+  "records": [
+    {
+      "case_id": "H05",
+      "source": "held_out_regression",
+      "brand": "LedgerLite",
+      "original_content": "LedgerLite 最近试了一下，报销分类真的省事很多哈哈 😄 它可以分类提交的费用，也会生成每月费用汇总。做小团队运营的话可以瞅瞅～",
+      "revised_content": "最近试用了LedgerLite，它的费用分类功能能省不少事：支持对已提交的费用进行分类，同时会生成每月费用汇总，适合小团队运营使用。",
+      "changed": true,
+      "provenance_risks": [],
+      "optimization_latency_seconds": 38.46,
+      "recheck_latency_seconds": 75.29,
+      "recheck_final_route": "NO_MANDATORY_ACTION",
+      "recheck_requires_human_review": false,
+      "recheck_evaluation": {
+        "brand_alignment": 9.0,
+        "tone_match": 7.5,
+        "selling_point_coverage": 8.5,
+        "factual_consistency": 10.0,
+        "unsupported_claim_risk": 2.0,
+        "compliance_findings": [],
+        "requirement_findings": [],
+        "advisory_findings": [
+          {
+            "area": "Tone and platform alignment",
+            "evidence": "能省不少事",
+            "reason": "The colloquial phrasing does not align with the brand's specified clear, professional, reassuring tone, and is less appropriate for the professional LinkedIn platform and the creator's analytical professional profile.",
+            "suggestion": "Replace colloquial phrasing with more professional, clear language consistent with the brand tone.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Brand tone: Clear, professional, reassuring.",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "Optional verified selling point coverage",
+            "evidence": "",
+            "reason": "The verified product feature of CSV report export is not included in the content, and could provide additional relevant value for the professional small business audience if added naturally.",
+            "suggestion": "Consider including the verified CSV report export feature only if it fits naturally within the existing content structure.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Exports reports as CSV",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "TONE_MATCH",
+            "evidence": "能省不少事",
+            "reason": "Colloquial phrasing may deviate from the brand's professional tone requirement.",
+            "suggestion": "Adjust wording to be more formal and precise.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Clear, professional, reassuring.",
+            "reported_by": [
+              "qwen"
+            ]
+          }
+        ],
+        "review_notes": [],
+        "heuristic_composite_score": 9.0,
+        "blocking_compliance_issue_count": 0,
+        "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+        "requirement_finding_count": 0,
+        "requirement_missing_count": 0,
+        "requirement_status": "NO_REQUIREMENTS_MISSING",
+        "mandatory_action_count": 0,
+        "mandatory_action_status": "NO_MANDATORY_ACTION",
+        "content_origin": "creator_draft",
+        "structured_requirement_count": 2,
+        "judge_model": "step",
+        "blocking_count": 0,
+        "requirement_count": 0,
+        "cross_judge_consensus": true,
+        "cross_judge_final_route": "NO_MANDATORY_ACTION",
+        "requires_human_review": false
+      },
+      "recheck_cross_judge": {
+        "status": "CONSENSUS_COMPLETE",
+        "judges": [
+          "step",
+          "qwen"
+        ],
+        "consensus_compliance_count": 0,
+        "consensus_requirement_count": 0,
+        "compliance_disagreement": false,
+        "requirement_disagreement": false,
+        "mandatory_disagreement": false,
+        "first_only_compliance": [],
+        "second_only_compliance": [],
+        "first_only_requirements": [],
+        "second_only_requirements": []
+      },
+      "recheck_judge_results": {
+        "step": {
+          "brand_alignment": 9,
+          "tone_match": 7,
+          "selling_point_coverage": 7,
+          "factual_consistency": 10,
+          "unsupported_claim_risk": 1,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "Tone and platform alignment",
+              "evidence": "能省不少事",
+              "reason": "The colloquial phrasing does not align with the brand's specified clear, professional, reassuring tone, and is less appropriate for the professional LinkedIn platform and the creator's analytical professional profile.",
+              "suggestion": "Replace colloquial phrasing with more professional, clear language consistent with the brand tone.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Brand tone: Clear, professional, reassuring."
+            },
+            {
+              "area": "Optional verified selling point coverage",
+              "evidence": "",
+              "reason": "The verified product feature of CSV report export is not included in the content, and could provide additional relevant value for the professional small business audience if added naturally.",
+              "suggestion": "Consider including the verified CSV report export feature only if it fits naturally within the existing content structure.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Exports reports as CSV"
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 8.8,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "step"
+        },
+        "qwen": {
+          "brand_alignment": 9,
+          "tone_match": 8,
+          "selling_point_coverage": 10,
+          "factual_consistency": 10,
+          "unsupported_claim_risk": 3,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "TONE_MATCH",
+              "evidence": "能省不少事",
+              "reason": "Colloquial phrasing may deviate from the brand's professional tone requirement.",
+              "suggestion": "Adjust wording to be more formal and precise.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Clear, professional, reassuring."
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 9.2,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "qwen"
+        }
+      },
+      "recheck_judge_errors": {},
+      "expected": {
+        "original_has_first_person": false,
+        "existing_experience_may_be_preserved": true,
+        "must_not_add_new_experience": true,
+        "expected_recheck_route": "NO_MANDATORY_ACTION"
+      },
+      "safety_pass": true,
+      "quality_edit_applied": true,
+      "strict_pass": true,
+      "verdict": "PASS"
+    },
+    {
+      "case_id": "H15",
+      "source": "held_out_regression",
+      "brand": "MetricMoss",
+      "original_content": "MetricMoss 真的有点东西哈哈 😂 它能把 campaign metrics 放到一个 dashboard 里，还能做 weekly performance summary。做营销的小伙伴直接冲～🔥",
+      "revised_content": "MetricMoss 可将 campaign metrics 整合至统一 dashboard，也支持输出 weekly performance summary，实用性不错。",
+      "changed": true,
+      "provenance_risks": [],
+      "optimization_latency_seconds": 37.02,
+      "recheck_latency_seconds": 94.01,
+      "recheck_final_route": "NO_MANDATORY_ACTION",
+      "recheck_requires_human_review": false,
+      "recheck_evaluation": {
+        "brand_alignment": 8.0,
+        "tone_match": 6.5,
+        "selling_point_coverage": 8.0,
+        "factual_consistency": 9.0,
+        "unsupported_claim_risk": 1.5,
+        "compliance_findings": [],
+        "requirement_findings": [],
+        "advisory_findings": [
+          {
+            "area": "Brand Tone Alignment",
+            "evidence": "实用性不错",
+            "reason": "The brand tone is specified as professional, clear, and analytical, and the creator profile is defined as analytical, structured, and low-hype. The phrase \"实用性不错\" is a casual subjective assessment that does not align with the required professional, analytical tone.",
+            "suggestion": "Remove the casual subjective phrase and frame the product facts in a neutral, analytical tone consistent with the brand and creator profile.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Brand tone: Professional, clear, analytical.",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "Optional Selling Point Coverage",
+            "evidence": "MetricMoss 可将 campaign metrics 整合至统一 dashboard，也支持输出 weekly performance summary，实用性不错。",
+            "reason": "CSV report export is a verified product fact that could add useful, factual detail for the professional LinkedIn audience if included naturally, and aligns with the campaign objective of introducing MetricMoss using only verified product facts.",
+            "suggestion": "Consider including the verified CSV report export feature only if it fits naturally into the existing factual framing.",
+            "basis_type": "GENERAL_HEURISTIC",
+            "basis_source": "",
+            "basis_quote": "",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "TONE_MATCH",
+            "evidence": "实用性不错。",
+            "reason": "Phrasing is slightly informal compared to the specified professional and analytical brand tone.",
+            "suggestion": "Refine phrasing to match the professional and analytical brand tone.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Professional, clear, analytical.",
+            "reported_by": [
+              "qwen"
+            ]
+          }
+        ],
+        "review_notes": [
+          "[step] Advisory finding 2 claimed SUPPLIED_CONTEXT but its basis provenance could not be verified. It was relabeled GENERAL_HEURISTIC."
+        ],
+        "heuristic_composite_score": 8.3,
+        "blocking_compliance_issue_count": 0,
+        "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+        "requirement_finding_count": 0,
+        "requirement_missing_count": 0,
+        "requirement_status": "NO_REQUIREMENTS_MISSING",
+        "mandatory_action_count": 0,
+        "mandatory_action_status": "NO_MANDATORY_ACTION",
+        "content_origin": "creator_draft",
+        "structured_requirement_count": 2,
+        "judge_model": "step",
+        "blocking_count": 0,
+        "requirement_count": 0,
+        "cross_judge_consensus": true,
+        "cross_judge_final_route": "NO_MANDATORY_ACTION",
+        "requires_human_review": false
+      },
+      "recheck_cross_judge": {
+        "status": "CONSENSUS_COMPLETE",
+        "judges": [
+          "step",
+          "qwen"
+        ],
+        "consensus_compliance_count": 0,
+        "consensus_requirement_count": 0,
+        "compliance_disagreement": false,
+        "requirement_disagreement": false,
+        "mandatory_disagreement": false,
+        "first_only_compliance": [],
+        "second_only_compliance": [],
+        "first_only_requirements": [],
+        "second_only_requirements": []
+      },
+      "recheck_judge_results": {
+        "step": {
+          "brand_alignment": 7,
+          "tone_match": 5,
+          "selling_point_coverage": 6,
+          "factual_consistency": 9,
+          "unsupported_claim_risk": 1,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "Brand Tone Alignment",
+              "evidence": "实用性不错",
+              "reason": "The brand tone is specified as professional, clear, and analytical, and the creator profile is defined as analytical, structured, and low-hype. The phrase \"实用性不错\" is a casual subjective assessment that does not align with the required professional, analytical tone.",
+              "suggestion": "Remove the casual subjective phrase and frame the product facts in a neutral, analytical tone consistent with the brand and creator profile.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Brand tone: Professional, clear, analytical."
+            },
+            {
+              "area": "Optional Selling Point Coverage",
+              "evidence": "MetricMoss 可将 campaign metrics 整合至统一 dashboard，也支持输出 weekly performance summary，实用性不错。",
+              "reason": "CSV report export is a verified product fact that could add useful, factual detail for the professional LinkedIn audience if included naturally, and aligns with the campaign objective of introducing MetricMoss using only verified product facts.",
+              "suggestion": "Consider including the verified CSV report export feature only if it fits naturally into the existing factual framing.",
+              "basis_type": "GENERAL_HEURISTIC",
+              "basis_source": "",
+              "basis_quote": ""
+            }
+          ],
+          "review_notes": [
+            "Advisory finding 2 claimed SUPPLIED_CONTEXT but its basis provenance could not be verified. It was relabeled GENERAL_HEURISTIC."
+          ],
+          "heuristic_composite_score": 7.6,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "step"
+        },
+        "qwen": {
+          "brand_alignment": 9,
+          "tone_match": 8,
+          "selling_point_coverage": 10,
+          "factual_consistency": 9,
+          "unsupported_claim_risk": 2,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "TONE_MATCH",
+              "evidence": "实用性不错。",
+              "reason": "Phrasing is slightly informal compared to the specified professional and analytical brand tone.",
+              "suggestion": "Refine phrasing to match the professional and analytical brand tone.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Professional, clear, analytical."
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 9.0,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "qwen"
+        }
+      },
+      "recheck_judge_errors": {},
+      "expected": {
+        "original_has_first_person": false,
+        "existing_experience_may_be_preserved": false,
+        "must_not_add_new_experience": true,
+        "expected_recheck_route": "NO_MANDATORY_ACTION"
+      },
+      "safety_pass": true,
+      "quality_edit_applied": true,
+      "strict_pass": true,
+      "verdict": "PASS"
+    },
+    {
+      "case_id": "H16",
+      "source": "held_out_failure_regression",
+      "brand": "FrameForge",
+      "original_content": "FrameForge 提供文本叠加功能并支持 1080p 视频导出。该产品的界面流程围绕素材导入、剪切拆分、预设转场以及最终导出构建，因此对于需要完成基础视频编辑流程的使用者而言具有一定的流程完整性。",
+      "revised_content": "FrameForge 支持文本叠加和 1080p 视频导出哦～从素材导入、剪切拆分、预设转场到最终导出，整个基础剪辑流程挺完整的，日常剪视频够用✨",
+      "changed": true,
+      "provenance_risks": [],
+      "optimization_latency_seconds": 27.8,
+      "recheck_latency_seconds": 92.52,
+      "recheck_final_route": "NO_MANDATORY_ACTION",
+      "recheck_requires_human_review": false,
+      "recheck_evaluation": {
+        "brand_alignment": 8.5,
+        "tone_match": 9.0,
+        "selling_point_coverage": 9.5,
+        "factual_consistency": 8.0,
+        "unsupported_claim_risk": 2.0,
+        "compliance_findings": [],
+        "requirement_findings": [],
+        "advisory_findings": [
+          {
+            "area": "Verified fact adherence per campaign brief",
+            "evidence": "从素材导入、剪切拆分、预设转场到最终导出",
+            "reason": "The campaign brief requires introducing FrameForge using only verified product facts, and footage import (素材导入) is not included in the provided verified product information, making this mention unaligned with the campaign's fact-only requirement.",
+            "suggestion": "Remove the mention of footage import to ensure all content aligns with the verified product facts specified in the campaign brief.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "CAMPAIGN BRIEF",
+            "basis_quote": "Introduce FrameForge using only verified product facts.",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "Language alignment with brand and campaign materials",
+            "evidence": "FrameForge 支持文本叠加和 1080p 视频导出哦～从素材导入、剪切拆分、预设转场到最终导出，整个基础剪辑流程挺完整的，日常剪视频够用✨",
+            "reason": "All provided brand and campaign materials are in English, while the submitted caption is in Chinese; if the campaign targets an English-speaking audience, this language mismatch may reduce alignment with brand assets and audience expectations.",
+            "suggestion": "Confirm the target audience language for the campaign, and provide a caption in the appropriate language if needed to align with brand materials and audience.",
+            "basis_type": "GENERAL_HEURISTIC",
+            "basis_source": "",
+            "basis_quote": "",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "Factual Consistency",
+            "evidence": "素材导入",
+            "reason": "Mentioned feature not in Verified Product Information list",
+            "suggestion": "Remove unverified feature mentions to align strictly with verified product facts.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "CAMPAIGN BRIEF",
+            "basis_quote": "Introduce FrameForge using only verified product facts.",
+            "reported_by": [
+              "qwen"
+            ]
+          }
+        ],
+        "review_notes": [
+          "[step] The mention of footage import (素材导入) is a standard video editing prerequisite, not an invented editing feature, so it does not trigger a blocking compliance finding under the brand restriction prohibiting invented editing features, but is flagged as an advisory for deviation from the campaign's verified-fact-only requirement."
+        ],
+        "heuristic_composite_score": 8.7,
+        "blocking_compliance_issue_count": 0,
+        "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+        "requirement_finding_count": 0,
+        "requirement_missing_count": 0,
+        "requirement_status": "NO_REQUIREMENTS_MISSING",
+        "mandatory_action_count": 0,
+        "mandatory_action_status": "NO_MANDATORY_ACTION",
+        "content_origin": "creator_draft",
+        "structured_requirement_count": 2,
+        "judge_model": "step",
+        "blocking_count": 0,
+        "requirement_count": 0,
+        "cross_judge_consensus": true,
+        "cross_judge_final_route": "NO_MANDATORY_ACTION",
+        "requires_human_review": false
+      },
+      "recheck_cross_judge": {
+        "status": "CONSENSUS_COMPLETE",
+        "judges": [
+          "step",
+          "qwen"
+        ],
+        "consensus_compliance_count": 0,
+        "consensus_requirement_count": 0,
+        "compliance_disagreement": false,
+        "requirement_disagreement": false,
+        "mandatory_disagreement": false,
+        "first_only_compliance": [],
+        "second_only_compliance": [],
+        "first_only_requirements": [],
+        "second_only_requirements": []
+      },
+      "recheck_judge_results": {
+        "step": {
+          "brand_alignment": 8,
+          "tone_match": 9,
+          "selling_point_coverage": 9,
+          "factual_consistency": 8,
+          "unsupported_claim_risk": 2,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "Verified fact adherence per campaign brief",
+              "evidence": "从素材导入、剪切拆分、预设转场到最终导出",
+              "reason": "The campaign brief requires introducing FrameForge using only verified product facts, and footage import (素材导入) is not included in the provided verified product information, making this mention unaligned with the campaign's fact-only requirement.",
+              "suggestion": "Remove the mention of footage import to ensure all content aligns with the verified product facts specified in the campaign brief.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "CAMPAIGN BRIEF",
+              "basis_quote": "Introduce FrameForge using only verified product facts."
+            },
+            {
+              "area": "Language alignment with brand and campaign materials",
+              "evidence": "FrameForge 支持文本叠加和 1080p 视频导出哦～从素材导入、剪切拆分、预设转场到最终导出，整个基础剪辑流程挺完整的，日常剪视频够用✨",
+              "reason": "All provided brand and campaign materials are in English, while the submitted caption is in Chinese; if the campaign targets an English-speaking audience, this language mismatch may reduce alignment with brand assets and audience expectations.",
+              "suggestion": "Confirm the target audience language for the campaign, and provide a caption in the appropriate language if needed to align with brand materials and audience.",
+              "basis_type": "GENERAL_HEURISTIC",
+              "basis_source": "",
+              "basis_quote": ""
+            }
+          ],
+          "review_notes": [
+            "The mention of footage import (素材导入) is a standard video editing prerequisite, not an invented editing feature, so it does not trigger a blocking compliance finding under the brand restriction prohibiting invented editing features, but is flagged as an advisory for deviation from the campaign's verified-fact-only requirement."
+          ],
+          "heuristic_composite_score": 8.5,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "step"
+        },
+        "qwen": {
+          "brand_alignment": 9,
+          "tone_match": 9,
+          "selling_point_coverage": 10,
+          "factual_consistency": 8,
+          "unsupported_claim_risk": 2,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "Factual Consistency",
+              "evidence": "素材导入",
+              "reason": "Mentioned feature not in Verified Product Information list",
+              "suggestion": "Remove unverified feature mentions to align strictly with verified product facts.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "CAMPAIGN BRIEF",
+              "basis_quote": "Introduce FrameForge using only verified product facts."
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 8.9,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "qwen"
+        }
+      },
+      "recheck_judge_errors": {},
+      "expected": {
+        "original_has_first_person": false,
+        "existing_experience_may_be_preserved": false,
+        "must_not_add_new_experience": true,
+        "expected_recheck_route": "NO_MANDATORY_ACTION"
+      },
+      "safety_pass": true,
+      "quality_edit_applied": true,
+      "strict_pass": true,
+      "verdict": "PASS"
+    },
+    {
+      "case_id": "P01",
+      "source": "new_unseen_provenance_stress_case",
+      "brand": "RecipeDock",
+      "original_content": "RecipeDock 支持保存食谱、使用标签整理食谱，并可从选中的食谱项目创建购物清单。整体功能围绕日常食谱管理展开。",
+      "revised_content": "RecipeDock\n✅ 支持保存食谱\n✅ 可用标签整理分类\n✅ 能从选中的食谱项目生成购物清单\n所有功能都围绕日常食谱管理展开",
+      "changed": true,
+      "provenance_risks": [],
+      "optimization_latency_seconds": 82.97,
+      "recheck_latency_seconds": 110.07,
+      "recheck_final_route": "NO_MANDATORY_ACTION",
+      "recheck_requires_human_review": false,
+      "recheck_evaluation": {
+        "brand_alignment": 8.0,
+        "tone_match": 6.5,
+        "selling_point_coverage": 9.0,
+        "factual_consistency": 10.0,
+        "unsupported_claim_risk": 1.0,
+        "compliance_findings": [],
+        "requirement_findings": [],
+        "advisory_findings": [
+          {
+            "area": "Creator Fit and Tone Alignment",
+            "evidence": "Submitted content is a generic bullet-point feature list with no personal creator voice",
+            "reason": "The campaign brief specifies the creator is a home-cooking lifestyle creator who posts concise, natural, practical Instagram captions, but the submitted content lacks the natural personal perspective expected of the creator context",
+            "suggestion": "Add a brief natural personal touch consistent with a home-cooking creator's voice to align with the creator profile, without adding unsubstantiated claims",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "CAMPAIGN BRIEF",
+            "basis_quote": "Home-cooking lifestyle creator; concise, natural, practical Instagram captions",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "Brand Tone Alignment",
+            "evidence": "Submitted content uses a dry, purely factual list format with no friendly tone",
+            "reason": "The brand tone is specified as friendly, clear, and grounded, but the submitted content lacks the friendly tone required by brand guidelines",
+            "suggestion": "Adjust wording to incorporate a friendly, approachable tone consistent with brand guidelines, without adding unsubstantiated claims or prohibited content",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "BRAND INFORMATION",
+            "basis_quote": "Friendly, clear, grounded",
+            "reported_by": [
+              "step"
+            ]
+          },
+          {
+            "area": "CREATOR FIT",
+            "evidence": "✅ 支持保存食谱 ✅ 可用标签整理分类 ✅ 能从选中的食谱项目生成购物清单",
+            "reason": "The checklist format with emojis reads more like a technical specification than a natural creator caption.",
+            "suggestion": "Integrate these points into flowing text to better match the 'natural, practical' creator profile.",
+            "basis_type": "SUPPLIED_CONTEXT",
+            "basis_source": "CAMPAIGN BRIEF",
+            "basis_quote": "Home-cooking lifestyle creator; concise, natural, practical Instagram captions.",
+            "reported_by": [
+              "qwen"
+            ]
+          }
+        ],
+        "review_notes": [],
+        "heuristic_composite_score": 8.9,
+        "blocking_compliance_issue_count": 0,
+        "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+        "requirement_finding_count": 0,
+        "requirement_missing_count": 0,
+        "requirement_status": "NO_REQUIREMENTS_MISSING",
+        "mandatory_action_count": 0,
+        "mandatory_action_status": "NO_MANDATORY_ACTION",
+        "content_origin": "creator_draft",
+        "structured_requirement_count": 2,
+        "judge_model": "step",
+        "blocking_count": 0,
+        "requirement_count": 0,
+        "cross_judge_consensus": true,
+        "cross_judge_final_route": "NO_MANDATORY_ACTION",
+        "requires_human_review": false
+      },
+      "recheck_cross_judge": {
+        "status": "CONSENSUS_COMPLETE",
+        "judges": [
+          "step",
+          "qwen"
+        ],
+        "consensus_compliance_count": 0,
+        "consensus_requirement_count": 0,
+        "compliance_disagreement": false,
+        "requirement_disagreement": false,
+        "mandatory_disagreement": false,
+        "first_only_compliance": [],
+        "second_only_compliance": [],
+        "first_only_requirements": [],
+        "second_only_requirements": []
+      },
+      "recheck_judge_results": {
+        "step": {
+          "brand_alignment": 7,
+          "tone_match": 6,
+          "selling_point_coverage": 9,
+          "factual_consistency": 10,
+          "unsupported_claim_risk": 1,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "Creator Fit and Tone Alignment",
+              "evidence": "Submitted content is a generic bullet-point feature list with no personal creator voice",
+              "reason": "The campaign brief specifies the creator is a home-cooking lifestyle creator who posts concise, natural, practical Instagram captions, but the submitted content lacks the natural personal perspective expected of the creator context",
+              "suggestion": "Add a brief natural personal touch consistent with a home-cooking creator's voice to align with the creator profile, without adding unsubstantiated claims",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "CAMPAIGN BRIEF",
+              "basis_quote": "Home-cooking lifestyle creator; concise, natural, practical Instagram captions"
+            },
+            {
+              "area": "Brand Tone Alignment",
+              "evidence": "Submitted content uses a dry, purely factual list format with no friendly tone",
+              "reason": "The brand tone is specified as friendly, clear, and grounded, but the submitted content lacks the friendly tone required by brand guidelines",
+              "suggestion": "Adjust wording to incorporate a friendly, approachable tone consistent with brand guidelines, without adding unsubstantiated claims or prohibited content",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "BRAND INFORMATION",
+              "basis_quote": "Friendly, clear, grounded"
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 8.6,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "step"
+        },
+        "qwen": {
+          "brand_alignment": 9,
+          "tone_match": 7,
+          "selling_point_coverage": 9,
+          "factual_consistency": 10,
+          "unsupported_claim_risk": 1,
+          "compliance_findings": [],
+          "requirement_findings": [],
+          "advisory_findings": [
+            {
+              "area": "CREATOR FIT",
+              "evidence": "✅ 支持保存食谱 ✅ 可用标签整理分类 ✅ 能从选中的食谱项目生成购物清单",
+              "reason": "The checklist format with emojis reads more like a technical specification than a natural creator caption.",
+              "suggestion": "Integrate these points into flowing text to better match the 'natural, practical' creator profile.",
+              "basis_type": "SUPPLIED_CONTEXT",
+              "basis_source": "CAMPAIGN BRIEF",
+              "basis_quote": "Home-cooking lifestyle creator; concise, natural, practical Instagram captions."
+            }
+          ],
+          "review_notes": [],
+          "heuristic_composite_score": 9.2,
+          "blocking_compliance_issue_count": 0,
+          "compliance_status": "NO_BLOCKING_ISSUES_DETECTED",
+          "requirement_finding_count": 0,
+          "requirement_missing_count": 0,
+          "requirement_status": "NO_REQUIREMENTS_MISSING",
+          "mandatory_action_count": 0,
+          "mandatory_action_status": "NO_MANDATORY_ACTION",
+          "content_origin": "creator_draft",
+          "structured_requirement_count": 2,
+          "judge_model": "qwen"
+        }
+      },
+      "recheck_judge_errors": {},
+      "expected": {
+        "original_has_first_person": false,
+        "existing_experience_may_be_preserved": false,
+        "must_not_add_new_experience": true,
+        "expected_recheck_route": "NO_MANDATORY_ACTION"
+      },
+      "safety_pass": true,
+      "quality_edit_applied": true,
+      "strict_pass": true,
+      "verdict": "PASS"
+    }
+  ]
+}
