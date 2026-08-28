@@ -2,3 +2,14 @@
 __pycache__/
 .idea/
 .DS_Store
+# Python / runtime artifacts
+*.pyc
+*.log
+
+# Invalidated / transient evaluation artifacts
+experiments/results/human_eval_v1/
+experiments/results/human_eval_v2/H*_result.json
+experiments/results/human_eval_v2/checkpoint.json
+experiments/results/provenance_regression_v1/H*_result.json
+experiments/results/provenance_regression_v1/P01_result.json
+experiments/results/provenance_regression_v1/checkpoint.json

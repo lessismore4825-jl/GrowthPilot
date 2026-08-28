@@ -1,0 +1,933 @@
+{
+  "benchmark_name": "GrowthPilot Held-out Human Evaluation Suite",
+  "version": "1.0",
+  "status": "held_out_prepared_for_real_system_run",
+  "important_note": "These 20 cases are held out from the earlier Benchmark A, Benchmark B, and front-end integration cases. Designed labels are used for development-time routing diagnostics only and are removed from the blind human-review packet.",
+  "distribution": {
+    "compliance": 4,
+    "requirement": 4,
+    "advisory_only": 4,
+    "clean": 4,
+    "boundary_human_review": 4
+  },
+  "cases": [
+    {
+      "case_id": "H01",
+      "category": "compliance",
+      "brand": "DermaNest",
+      "platform": "Xiaohongshu",
+      "content_type": "Creator social post",
+      "brand_context": {
+        "positioning": "Daily sensitive-skin care focused on hydration and barrier support.",
+        "tone": "Calm, credible, modern.",
+        "restrictions": [
+          "Do not claim to treat or cure skin disease.",
+          "Do not invent clinical evidence.",
+          "Do not guarantee medical outcomes."
+        ]
+      },
+      "verified_product_information": [
+        "Contains panthenol",
+        "Contains squalane",
+        "Designed for dry and sensitive skin",
+        "Provides up to 12 hours of hydration"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Panthenol"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Up to 12 hours of hydration"
+        }
+      ],
+      "must_avoid": [
+        "Disease treatment or cure claims",
+        "Invented clinical evidence"
+      ],
+      "creator_context": "Sensitive-skin lifestyle creator; natural, experience-led style.",
+      "creator_draft": "最近在用 DermaNest，里面有泛醇，保湿最长可到 12 小时。对我来说质地比较轻。它还能治疗皮炎，敏感期用起来很安心。",
+      "designed_gold": {
+        "expected_route": "COMPLIANCE_ACTION",
+        "blocking_focus": [
+          "治疗皮炎"
+        ],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H02",
+      "category": "compliance",
+      "brand": "ChargeMate",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Portable charging accessories for everyday use.",
+        "tone": "Practical, clear, reliable.",
+        "restrictions": [
+          "All technical specifications must match verified product information.",
+          "Do not invent charging features."
+        ]
+      },
+      "verified_product_information": [
+        "8,000mAh battery capacity",
+        "Maximum 18W wired charging",
+        "One USB-C port",
+        "Wired charging only"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "8,000mAh"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Portable design"
+        }
+      ],
+      "must_avoid": [
+        "Charging above 18W",
+        "Wireless charging"
+      ],
+      "creator_context": "Everyday-tech creator; concise practical recommendations.",
+      "creator_draft": "ChargeMate Mini 是 8,000mAh，体积小，日常带着比较方便。它支持 25W 快充，还能直接无线充电。",
+      "designed_gold": {
+        "expected_route": "COMPLIANCE_ACTION",
+        "blocking_focus": [
+          "25W",
+          "无线充电"
+        ],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H03",
+      "category": "requirement",
+      "brand": "TrailCup",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Reusable drinkware for commuting and outdoor use.",
+        "tone": "Simple, functional, friendly.",
+        "restrictions": [
+          "Do not claim complete leak-proof performance.",
+          "Do not change verified specifications."
+        ]
+      },
+      "verified_product_information": [
+        "500ml",
+        "Stainless steel",
+        "Keeps drinks cold for up to 14 hours",
+        "Leak-resistant",
+        "BPA-free"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Up to 14 hours cold"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "EXACT",
+          "content": "BPA-free"
+        }
+      ],
+      "must_avoid": [
+        "Completely leak-proof"
+      ],
+      "creator_context": "Outdoor commuting creator; practical and concise.",
+      "creator_draft": "TrailCup 500ml 不锈钢杯最近通勤一直在用，冷饮最长可以保持 14 小时低温，放包里也很方便。",
+      "designed_gold": {
+        "expected_route": "REQUIREMENT_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [
+          "R2"
+        ]
+      }
+    },
+    {
+      "case_id": "H04",
+      "category": "requirement",
+      "brand": "TaskFlow AI",
+      "platform": "LinkedIn",
+      "content_type": "Professional creator post",
+      "brand_context": {
+        "positioning": "AI workflow assistant for professional teams.",
+        "tone": "Professional, structured, trustworthy.",
+        "restrictions": [
+          "Do not guarantee productivity outcomes.",
+          "Do not invent integrations."
+        ]
+      },
+      "verified_product_information": [
+        "Summarizes project updates",
+        "Extracts action items",
+        "Creates weekly status overviews"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Project update summaries"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Action item extraction"
+        },
+        {
+          "requirement_id": "R3",
+          "match_mode": "SEMANTIC",
+          "content": "Weekly status overviews"
+        }
+      ],
+      "must_avoid": [
+        "Guaranteed productivity improvement"
+      ],
+      "creator_context": "B2B productivity creator; structured professional commentary.",
+      "creator_draft": "TaskFlow AI 可以把项目更新整理成摘要，也会从内容中提取 action items，适合团队做日常信息整理。",
+      "designed_gold": {
+        "expected_route": "REQUIREMENT_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [
+          "R3"
+        ]
+      }
+    },
+    {
+      "case_id": "H05",
+      "category": "advisory_only",
+      "brand": "LedgerLite",
+      "platform": "LinkedIn",
+      "content_type": "Creator post",
+      "brand_context": {
+        "positioning": "Expense tracking software for small business teams.",
+        "tone": "Clear, professional, reassuring.",
+        "restrictions": [
+          "Do not claim accounting or tax guarantees.",
+          "Do not invent financial outcomes."
+        ]
+      },
+      "verified_product_information": [
+        "Categorizes submitted expenses",
+        "Generates monthly expense summaries",
+        "Exports reports as CSV"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Expense categorization"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Monthly expense summaries"
+        }
+      ],
+      "must_avoid": [
+        "Guaranteed tax savings"
+      ],
+      "creator_context": "Small-business operations creator; analytical professional style.",
+      "creator_draft": "LedgerLite 最近试了一下，报销分类真的省事很多哈哈 😄 它可以分类提交的费用，也会生成每月费用汇总。做小团队运营的话可以瞅瞅～",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [],
+        "advisory_focus": [
+          "tone",
+          "platform fit"
+        ]
+      }
+    },
+    {
+      "case_id": "H06",
+      "category": "advisory_only",
+      "brand": "CalmDesk",
+      "platform": "LinkedIn",
+      "content_type": "Creator post",
+      "brand_context": {
+        "positioning": "Focus and workflow software for knowledge workers.",
+        "tone": "Measured, thoughtful, professional.",
+        "restrictions": [
+          "Do not make mental-health treatment claims.",
+          "Do not guarantee productivity outcomes."
+        ]
+      },
+      "verified_product_information": [
+        "Provides focus-session timers",
+        "Lets users group tasks into work blocks",
+        "Shows daily focus-session history"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Focus-session timers"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Task grouping into work blocks"
+        }
+      ],
+      "must_avoid": [
+        "Mental-health treatment claims",
+        "Guaranteed productivity outcomes"
+      ],
+      "creator_context": "Workplace systems creator; structured, reflective, low-hype style.",
+      "creator_draft": "CalmDesk 有 focus timer，也能把任务分成不同 work blocks。我这两天用了下，功能逻辑挺清楚的！！！冲就完了 🔥",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [],
+        "advisory_focus": [
+          "tone",
+          "creator-style fit"
+        ]
+      }
+    },
+    {
+      "case_id": "H07",
+      "category": "clean",
+      "brand": "NotePilot",
+      "platform": "LinkedIn",
+      "content_type": "Creator post",
+      "brand_context": {
+        "positioning": "Meeting documentation assistant for professional teams.",
+        "tone": "Professional, concise, trustworthy.",
+        "restrictions": [
+          "Do not guarantee transcription accuracy.",
+          "Do not claim users will never miss information."
+        ]
+      },
+      "verified_product_information": [
+        "Transcribes meetings",
+        "Generates structured summaries",
+        "Extracts action items"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Meeting transcription"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Structured summaries"
+        },
+        {
+          "requirement_id": "R3",
+          "match_mode": "SEMANTIC",
+          "content": "Action item extraction"
+        }
+      ],
+      "must_avoid": [
+        "Perfect transcription claims",
+        "Never-miss-information claims"
+      ],
+      "creator_context": "B2B productivity creator; concise professional style.",
+      "creator_draft": "NotePilot 面向专业团队会议记录场景，支持会议转录、结构化摘要和行动项提取。对于会议较多的团队，这些功能可以用于整理记录并查看后续行动事项。",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H08",
+      "category": "clean",
+      "brand": "BrewLane",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Ready-to-drink cold brew for everyday coffee routines.",
+        "tone": "Simple, upbeat, grounded.",
+        "restrictions": [
+          "Do not make health claims.",
+          "Do not claim improved academic or work performance."
+        ]
+      },
+      "verified_product_information": [
+        "100% Arabica coffee",
+        "No added sugar",
+        "Approximately 6 servings per bottle"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "100% Arabica"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "No added sugar"
+        }
+      ],
+      "must_avoid": [
+        "Health benefits",
+        "Academic-performance claims"
+      ],
+      "creator_context": "Food and lifestyle creator; casual but factual.",
+      "creator_draft": "BrewLane 用的是 100% Arabica，没有添加糖。一瓶大约 6 份，放在冰箱里平时想喝的时候倒一杯就很方便。",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H09",
+      "category": "boundary_human_review",
+      "brand": "SealGo",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Reusable bottle for commuting.",
+        "tone": "Practical, friendly, grounded.",
+        "restrictions": [
+          "Do not claim complete leak-proof performance."
+        ]
+      },
+      "verified_product_information": [
+        "550ml",
+        "Leak-resistant lid",
+        "Stainless steel"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "550ml"
+        }
+      ],
+      "must_avoid": [
+        "Completely leak-proof"
+      ],
+      "creator_context": "Commuting lifestyle creator; first-person practical sharing.",
+      "creator_draft": "SealGo 是 550ml 不锈钢杯，平时放通勤包里我基本不用担心它漏出来。",
+      "designed_gold": {
+        "expected_route": "BOUNDARY_CASE",
+        "blocking_focus": [
+          "我基本不用担心它漏出来"
+        ],
+        "requirement_missing": [],
+        "note": "Reasonable reviewers may disagree whether this crosses the supplied 'complete leak-proof' restriction."
+      }
+    },
+    {
+      "case_id": "H10",
+      "category": "boundary_human_review",
+      "brand": "FocusBoard",
+      "platform": "LinkedIn",
+      "content_type": "Professional creator post",
+      "brand_context": {
+        "positioning": "Team planning dashboard.",
+        "tone": "Professional, practical, evidence-conscious.",
+        "restrictions": [
+          "Do not guarantee that tasks will never be missed."
+        ]
+      },
+      "verified_product_information": [
+        "Shows team tasks in one dashboard",
+        "Lets users assign owners",
+        "Tracks task status"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Task dashboard"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Task ownership"
+        }
+      ],
+      "must_avoid": [
+        "Guarantees that tasks will never be missed"
+      ],
+      "creator_context": "Operations creator; concise B2B style.",
+      "creator_draft": "FocusBoard 把团队任务集中在一个 dashboard 里，也可以分配负责人。对日常协作来说，这样基本不会再漏掉该跟进的任务。",
+      "designed_gold": {
+        "expected_route": "BOUNDARY_CASE",
+        "blocking_focus": [
+          "基本不会再漏掉"
+        ],
+        "requirement_missing": [],
+        "note": "Designed to test disagreement around near-guarantee language."
+      }
+    },
+    {
+      "case_id": "H11",
+      "category": "compliance",
+      "brand": "PureAir Mini",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Compact air purifier for everyday indoor spaces.",
+        "tone": "Clear, practical, evidence-conscious.",
+        "restrictions": [
+          "Do not claim to prevent or treat disease.",
+          "Do not claim 100% removal of viruses, bacteria, allergens, or pollutants.",
+          "All performance statements must match verified product information."
+        ]
+      },
+      "verified_product_information": [
+        "Three fan speeds",
+        "Timer settings up to 8 hours",
+        "Designed for rooms up to 20 square metres",
+        "Replaceable particle filter"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Three fan speeds"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Rooms up to 20 square metres"
+        }
+      ],
+      "must_avoid": [
+        "Disease-prevention claims",
+        "100% removal claims"
+      ],
+      "creator_context": "Home-lifestyle creator; practical, low-hype product sharing.",
+      "creator_draft": "PureAir Mini 有三档风速，适合最多约 20㎡ 的房间。我觉得体积放桌边刚好，而且可以 100% 清除空气里的病毒和细菌，换季用着更放心。",
+      "designed_gold": {
+        "expected_route": "COMPLIANCE_ACTION",
+        "blocking_focus": [
+          "100% 清除空气里的病毒和细菌"
+        ],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H12",
+      "category": "compliance",
+      "brand": "SnapLite",
+      "platform": "TikTok",
+      "content_type": "Creator short-video caption",
+      "brand_context": {
+        "positioning": "Pocket camera for casual everyday content creation.",
+        "tone": "Energetic but factual.",
+        "restrictions": [
+          "All camera specifications must match verified product information.",
+          "Do not invent stabilization or recording capabilities."
+        ]
+      },
+      "verified_product_information": [
+        "12MP photos",
+        "1080p video recording",
+        "Digital stabilization",
+        "Built-in front display"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "1080p video"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Front display"
+        }
+      ],
+      "must_avoid": [
+        "4K recording claims",
+        "Optical stabilization claims"
+      ],
+      "creator_context": "Everyday-tech creator; fast-paced but specification-aware.",
+      "creator_draft": "SnapLite 拍视频最高 1080p，前面还有一块显示屏，自拍取景挺方便。它其实还能拍 4K，而且有光学防抖，走路拍也很稳。",
+      "designed_gold": {
+        "expected_route": "COMPLIANCE_ACTION",
+        "blocking_focus": [
+          "还能拍 4K",
+          "有光学防抖"
+        ],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H13",
+      "category": "requirement",
+      "brand": "MorrowBag",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Lightweight everyday carry products.",
+        "tone": "Minimal, functional, modern.",
+        "restrictions": [
+          "Do not invent sustainability certifications.",
+          "Do not change verified size or material information."
+        ]
+      },
+      "verified_product_information": [
+        "18L capacity",
+        "Made with recycled polyester",
+        "Water-resistant outer fabric",
+        "Padded laptop sleeve"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "18L capacity"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Recycled polyester"
+        },
+        {
+          "requirement_id": "R3",
+          "match_mode": "EXACT",
+          "content": "#MoveLight"
+        }
+      ],
+      "must_avoid": [
+        "Unsupported sustainability certification claims"
+      ],
+      "creator_context": "Urban commuting creator; clean, minimal captions.",
+      "creator_draft": "MorrowBag 是 18L，使用再生聚酯纤维，外层做了防泼水处理，里面还有带缓冲的电脑夹层。通勤装一天的东西比较顺手。",
+      "designed_gold": {
+        "expected_route": "REQUIREMENT_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [
+          "R3"
+        ]
+      }
+    },
+    {
+      "case_id": "H14",
+      "category": "requirement",
+      "brand": "CloudNest",
+      "platform": "LinkedIn",
+      "content_type": "Professional creator post",
+      "brand_context": {
+        "positioning": "Cloud storage for small professional teams.",
+        "tone": "Professional, concise, trustworthy.",
+        "restrictions": [
+          "Do not claim zero risk of data loss.",
+          "Do not invent security certifications."
+        ]
+      },
+      "verified_product_information": [
+        "2TB team storage plan",
+        "File version history for up to 30 days",
+        "Shared folders",
+        "Role-based folder permissions"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "2TB team storage"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "30-day file version history"
+        }
+      ],
+      "must_avoid": [
+        "Zero-risk data-loss guarantees"
+      ],
+      "creator_context": "SMB technology creator; structured B2B commentary.",
+      "creator_draft": "CloudNest 的团队方案提供 2TB 存储空间，也支持共享文件夹和按角色设置文件夹权限。对于小团队来说，日常文件协作逻辑比较直接。",
+      "designed_gold": {
+        "expected_route": "REQUIREMENT_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [
+          "R2"
+        ]
+      }
+    },
+    {
+      "case_id": "H15",
+      "category": "advisory_only",
+      "brand": "MetricMoss",
+      "platform": "LinkedIn",
+      "content_type": "Creator post",
+      "brand_context": {
+        "positioning": "Marketing analytics dashboard for small teams.",
+        "tone": "Professional, clear, analytical.",
+        "restrictions": [
+          "Do not guarantee revenue growth.",
+          "Do not invent data sources or integrations."
+        ]
+      },
+      "verified_product_information": [
+        "Combines campaign metrics into one dashboard",
+        "Supports weekly performance summaries",
+        "Exports reports as CSV"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Campaign metrics dashboard"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Weekly performance summaries"
+        }
+      ],
+      "must_avoid": [
+        "Guaranteed revenue growth"
+      ],
+      "creator_context": "B2B marketing operations creator; analytical, structured, low-hype style.",
+      "creator_draft": "MetricMoss 真的有点东西哈哈 😂 它能把 campaign metrics 放到一个 dashboard 里，还能做 weekly performance summary。做营销的小伙伴直接冲～🔥",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [],
+        "advisory_focus": [
+          "tone",
+          "LinkedIn fit",
+          "creator-style fit"
+        ]
+      }
+    },
+    {
+      "case_id": "H16",
+      "category": "advisory_only",
+      "brand": "FrameForge",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Lightweight video editing tool for everyday creators.",
+        "tone": "Creative, approachable, clear.",
+        "restrictions": [
+          "Do not claim professional-film results.",
+          "Do not invent editing features."
+        ]
+      },
+      "verified_product_information": [
+        "Trim and split clips",
+        "Add text overlays",
+        "Use preset transitions",
+        "Export 1080p video"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Text overlays"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "1080p export"
+        }
+      ],
+      "must_avoid": [
+        "Professional-film result claims"
+      ],
+      "creator_context": "Lifestyle video creator; short, natural, visual-first captions.",
+      "creator_draft": "FrameForge 提供文本叠加功能并支持 1080p 视频导出。该产品的界面流程围绕素材导入、剪切拆分、预设转场以及最终导出构建，因此对于需要完成基础视频编辑流程的使用者而言具有一定的流程完整性。",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": [],
+        "advisory_focus": [
+          "readability",
+          "creator voice",
+          "platform fit"
+        ]
+      }
+    },
+    {
+      "case_id": "H17",
+      "category": "clean",
+      "brand": "KeyPebble",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Compact mechanical keyboard for desk setups.",
+        "tone": "Enthusiastic, practical, specification-aware.",
+        "restrictions": [
+          "Do not invent switch types or connectivity modes.",
+          "Do not claim zero input latency."
+        ]
+      },
+      "verified_product_information": [
+        "75% keyboard layout",
+        "Bluetooth and USB-C wired connectivity",
+        "Hot-swappable switch sockets",
+        "White backlight"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "75% layout"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Bluetooth and USB-C wired connectivity"
+        }
+      ],
+      "must_avoid": [
+        "Zero-latency claims"
+      ],
+      "creator_context": "Desk-setup creator; concise, factual, lightly enthusiastic.",
+      "creator_draft": "KeyPebble 是 75% 配列，桌面占用比较小，同时支持 Bluetooth 和 USB-C 有线连接。它还有热插拔轴座和白色背光，比较适合想保持桌面简洁的人。",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H18",
+      "category": "clean",
+      "brand": "PantryPal",
+      "platform": "TikTok",
+      "content_type": "Creator short-video caption",
+      "brand_context": {
+        "positioning": "Simple household grocery-planning app.",
+        "tone": "Friendly, practical, uncomplicated.",
+        "restrictions": [
+          "Do not claim guaranteed food-cost savings.",
+          "Do not invent automatic purchasing features."
+        ]
+      },
+      "verified_product_information": [
+        "Shared grocery lists",
+        "Pantry-item reminders",
+        "Recipe saving"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Shared grocery lists"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Pantry reminders"
+        }
+      ],
+      "must_avoid": [
+        "Guaranteed savings claims",
+        "Automatic purchasing claims"
+      ],
+      "creator_context": "Home-organization creator; friendly, concise, practical.",
+      "creator_draft": "PantryPal 可以和家里人一起维护购物清单，也能给储物柜里的东西做提醒。平时买菜前打开看一下，比较方便确认还缺什么。",
+      "designed_gold": {
+        "expected_route": "NO_MANDATORY_ACTION",
+        "blocking_focus": [],
+        "requirement_missing": []
+      }
+    },
+    {
+      "case_id": "H19",
+      "category": "boundary_human_review",
+      "brand": "QuietLoop",
+      "platform": "Instagram",
+      "content_type": "Creator caption",
+      "brand_context": {
+        "positioning": "Everyday wireless earbuds for commuting.",
+        "tone": "Practical, relaxed, factual.",
+        "restrictions": [
+          "Do not claim complete silence or total elimination of outside sound."
+        ]
+      },
+      "verified_product_information": [
+        "Active noise reduction",
+        "Up to 7 hours playback per charge",
+        "Transparency mode"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Active noise reduction"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Up to 7 hours playback"
+        }
+      ],
+      "must_avoid": [
+        "Complete silence claims",
+        "Total elimination of outside sound"
+      ],
+      "creator_context": "Commuting creator; first-person, practical recommendations.",
+      "creator_draft": "QuietLoop 有主动降噪，单次最长大约 7 小时。坐地铁的时候开降噪，我基本听不到外面的声音，通勤会安静很多。",
+      "designed_gold": {
+        "expected_route": "BOUNDARY_CASE",
+        "blocking_focus": [
+          "我基本听不到外面的声音"
+        ],
+        "requirement_missing": [],
+        "note": "Designed to test whether near-absolute first-person wording is treated as a prohibited complete-silence claim or as subjective experience."
+      }
+    },
+    {
+      "case_id": "H20",
+      "category": "boundary_human_review",
+      "brand": "DraftWise",
+      "platform": "LinkedIn",
+      "content_type": "Professional creator post",
+      "brand_context": {
+        "positioning": "AI writing assistant for business drafts.",
+        "tone": "Professional, measured, trustworthy.",
+        "restrictions": [
+          "Do not guarantee that generated text is publish-ready.",
+          "Do not guarantee originality or factual accuracy."
+        ]
+      },
+      "verified_product_information": [
+        "Rewrites supplied text",
+        "Suggests shorter phrasing",
+        "Creates outline options"
+      ],
+      "must_mention": [
+        {
+          "requirement_id": "R1",
+          "match_mode": "SEMANTIC",
+          "content": "Text rewriting"
+        },
+        {
+          "requirement_id": "R2",
+          "match_mode": "SEMANTIC",
+          "content": "Outline suggestions"
+        }
+      ],
+      "must_avoid": [
+        "Publish-ready guarantees",
+        "Originality guarantees",
+        "Factual-accuracy guarantees"
+      ],
+      "creator_context": "Business writing creator; careful, practical B2B style.",
+      "creator_draft": "DraftWise 可以对现有文字做改写，也会给出 outline 选项。我最近拿它整理几篇内部文档，出来的版本基本可以直接发，不太需要再改。",
+      "designed_gold": {
+        "expected_route": "BOUNDARY_CASE",
+        "blocking_focus": [
+          "基本可以直接发，不太需要再改"
+        ],
+        "requirement_missing": [],
+        "note": "Designed to test whether near-publish-ready wording is interpreted as a prohibited guarantee or as a creator-specific experience."
+      }
+    }
+  ]
+}
