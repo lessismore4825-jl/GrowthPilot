@@ -1243,7 +1243,9 @@ The following assets are being added as part of the final portfolio packaging.
 
 ### Upcoming Visual Assets
 
-- [ ] Cross-Judge Architecture Diagram
+### Cross-Judge Architecture Diagram
+
+![GrowthPilot Cross-Judge Architecture](assets/diagrams/cross_judge_architecture.png)
 - [ ] Creator Experience Provenance Diagram
 - [ ] UI Screenshots
 - [ ] Evaluation Charts
