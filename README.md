@@ -1286,6 +1286,18 @@ Advisory findings remain non-blocking. Quality optimization is available only wh
 After optimization, the revised draft is re-checked through the same review architecture before returning to human approval.
 
 ![AI-Assisted Revision and Re-check](assets/screenshots/optional_optimization_after.png)
-- [ ] Evaluation Charts
+## Evaluation Evidence
+
+### Held-out Routing & Safety
+
+On a 20-case held-out synthetic suite, GrowthPilot achieved 15/16 exact route agreement across the 16 determinate cases. All four compliance-positive cases were either blocked or escalated, all four requirement omissions were correctly routed, and no advisory-only or clean case triggered a false mandatory action.
+
+![GrowthPilot Held-out Routing and Safety](assets/charts/heldout_routing_safety.png)
+
+### Label-masked AI-assisted Rubric Review
+
+Qualitative review was conducted using a label-masked AI-assisted rubric rather than a human-subject study. The evaluation measured finding quality, revision quality, voice preservation, advisory usefulness, and failure-driven regression outcomes.
+
+![GrowthPilot AI-assisted Rubric Review](assets/charts/qualitative_rubric_regression.png)
 
 These assets are intentionally left out of the current version so the written product logic can be finalized first.
