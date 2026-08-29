@@ -1249,7 +1249,43 @@ The following assets are being added as part of the final portfolio packaging.
 ### Creator Experience Provenance Diagram
 
 ![GrowthPilot Creator Experience Provenance](assets/diagrams/creator_experience_provenance.png)
-- [ ] UI Screenshots
+## Product Interface
+
+The prototype turns the governance architecture into an explicit review workflow: campaign context is supplied first, creator drafts are reviewed against structured evidence, and AI action permissions are determined by the resulting route.
+
+### 1. Context-Aware Campaign Setup
+
+GrowthPilot does not review content against an unconstrained prompt. Brand information, verified product facts, campaign requirements, creator context, and optional policy context are supplied explicitly.
+
+![Campaign Context — Brand and Product](assets/screenshots/create_context_01.png)
+
+<p align="center">
+  <img src="assets/screenshots/create_context_02.png" width="49%" alt="Campaign Brief and Creator Context">
+  <img src="assets/screenshots/create_context_03.png" width="49%" alt="Guidance and Draft Generation">
+</p>
+
+### 2. Permission-Aware Review Routing
+
+Different findings lead to different permissions. Compliance conflicts authorize mandatory correction only when supported by cross-judge consensus; missing campaign requirements authorize completion without being mislabeled as compliance.
+
+<p align="center">
+  <img src="assets/screenshots/compliance_review.png" width="49%" alt="Compliance Review">
+  <img src="assets/screenshots/requirement_review.png" width="49%" alt="Requirement Review">
+</p>
+
+When the Judges disagree on a mandatory-layer finding, automatic mandatory revision is disabled and the case is escalated to Human Review.
+
+![Cross-Judge Human Review](assets/screenshots/human_review.png)
+
+### 3. Human-Triggered Optional Optimization
+
+Advisory findings remain non-blocking. Quality optimization is available only when explicitly triggered by the user.
+
+![Optional Quality Optimization](assets/screenshots/optional_optimization.png)
+
+After optimization, the revised draft is re-checked through the same review architecture before returning to human approval.
+
+![AI-Assisted Revision and Re-check](assets/screenshots/optional_optimization_after.png)
 - [ ] Evaluation Charts
 
 These assets are intentionally left out of the current version so the written product logic can be finalized first.
