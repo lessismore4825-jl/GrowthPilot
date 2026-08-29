@@ -1235,14 +1235,17 @@ The project is designed to show how an AI PM can think about:
 
 ## Visual Assets To Be Added
 
-The following assets will be added after final visual polishing:
+The following assets are being added as part of the final portfolio packaging.
 
-```text
-[TODO] Product Workflow Diagram
-[TODO] Cross-Judge Architecture Diagram
-[TODO] Creator Experience Provenance Diagram
-[TODO] UI Screenshots
-[TODO] Evaluation Charts
-```
+### Product Workflow Diagram
+
+![GrowthPilot Product Workflow](assets/diagrams/product_workflow.png)
+
+### Upcoming Visual Assets
+
+- [ ] Cross-Judge Architecture Diagram
+- [ ] Creator Experience Provenance Diagram
+- [ ] UI Screenshots
+- [ ] Evaluation Charts
 
 These assets are intentionally left out of the current version so the written product logic can be finalized first.
